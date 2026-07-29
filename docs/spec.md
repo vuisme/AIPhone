@@ -69,13 +69,13 @@ The Android Agent is the source of truth. Studio only edits resources and observ
 ### Studio
 
 - React `19.2.8`
-- TypeScript `7.0.2`
+- TypeScript `6.0.2`
 - Vite `8.1.5`
 - `@xyflow/react` `12.11.2` for the node canvas
 - Zod `4.4.3` for boundary validation and shared workflow schemas
 - Canvas-based crop editor that preserves native screenshot pixels
 
-The listed web versions were checked from the npm registry on 2026-07-29.
+The listed web versions are locked in `studio/package-lock.json`.
 
 ### Android Agent
 

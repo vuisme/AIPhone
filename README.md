@@ -44,14 +44,15 @@ Do not uninstall the existing app if its local workflows/templates must be prese
 ## Start Studio
 
 1. Open `AIPhone Agent` on Android and grant root in KernelSU Manager.
-2. Keep the Agent foreground notification enabled.
-3. Forward the local port:
+2. Copy the 128-bit pairing token shown in the app.
+3. Keep the Agent foreground notification enabled.
+4. Forward the local port:
 
 ```powershell
 .\adb-tool\adb.exe forward tcp:8765 tcp:8765
 ```
 
-4. Open `http://127.0.0.1:8765` on the computer.
+5. Open `http://127.0.0.1:8765` on the computer and enter the pairing token. The browser retains it only for the current session.
 
 ## Repository layout
 
@@ -64,7 +65,7 @@ Do not uninstall the existing app if its local workflows/templates must be prese
 ## Security boundaries
 
 - The Agent listens on device loopback only; use ADB port forwarding.
+- Every API request requires the random pairing token shown by the Android app.
 - Studio cannot send arbitrary shell commands.
 - Clone actions are restricted to package `com.garena.game.kgvn` and user `999`.
 - Signing keys are stored only in GitHub Secrets.
-

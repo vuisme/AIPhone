@@ -49,6 +49,9 @@ class AgentStore(context: Context) {
         val encoded = dataUrl.substringAfter(',', dataUrl)
         val decoded = Base64.decode(encoded, Base64.DEFAULT)
         require(decoded.size <= MAX_TEMPLATE_BYTES) { "Template image is too large" }
+        require(decoded.size >= PNG_SIGNATURE.size && PNG_SIGNATURE.indices.all { decoded[it] == PNG_SIGNATURE[it] }) {
+            "Template must be a PNG image"
+        }
         writeAtomically(File(templateDirectory, "$id.png"), decoded)
         return record.toString()
     }
@@ -68,6 +71,7 @@ class AgentStore(context: Context) {
 
     companion object {
         private val ID_PATTERN = Regex("[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}")
+        private val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
         private const val MAX_WORKFLOW_BYTES = 2 * 1024 * 1024
         private const val MAX_TEMPLATE_BYTES = 8 * 1024 * 1024
         private const val MAX_TEMPLATE_UPLOAD_BYTES = 12 * 1024 * 1024

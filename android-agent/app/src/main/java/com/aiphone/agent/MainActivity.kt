@@ -2,7 +2,10 @@ package com.aiphone.agent
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -16,6 +19,7 @@ import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.aiphone.agent.root.RootGateway
+import com.aiphone.agent.storage.AgentStore
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
@@ -61,6 +65,19 @@ class MainActivity : Activity() {
             }
             addView(rootStatus, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
+            val pairingToken = AgentStore(context).accessToken()
+            addView(TextView(context).apply {
+                text = "PAIRING TOKEN\n${pairingToken.chunked(4).joinToString(" ")}"
+                textSize = 16f
+                setTextColor(Color.rgb(115, 215, 255))
+                gravity = Gravity.CENTER
+                setPadding(dp(14), dp(18), dp(14), dp(18))
+            }, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(actionButton("Sao chép pairing token") {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("AIPhone pairing token", pairingToken))
+            })
+
             addView(actionButton("Kiểm tra / cấp quyền root") {
                 rootStatus.text = "KernelSU: đang yêu cầu quyền..."
                 thread {
@@ -98,4 +115,3 @@ class MainActivity : Activity() {
         }
     }
 }
-

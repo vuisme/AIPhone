@@ -1,5 +1,29 @@
 import type { TemplateRecord, WorkflowDocument } from '../contracts/workflow'
 
+const TOKEN_KEY = 'aiphone.pairing-token'
+const queryToken = new URLSearchParams(window.location.search).get('token')
+if (queryToken) {
+  sessionStorage.setItem(TOKEN_KEY, queryToken.replace(/\s/g, ''))
+  history.replaceState(null, '', window.location.pathname)
+}
+
+let pairingToken = sessionStorage.getItem(TOKEN_KEY) ?? ''
+
+export function setAgentToken(value: string) {
+  pairingToken = value.replace(/\s/g, '')
+  sessionStorage.setItem(TOKEN_KEY, pairingToken)
+}
+
+export function hasAgentToken(): boolean {
+  return pairingToken.length > 0
+}
+
+function agentFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const headers = new Headers(init.headers)
+  if (pairingToken) headers.set('X-AIPhone-Token', pairingToken)
+  return fetch(input, { ...init, headers })
+}
+
 export interface DeviceHealth {
   model: string
   androidVersion: string
@@ -36,11 +60,11 @@ async function parseJson<T>(response: Response): Promise<T> {
 
 export const agentApi = {
   async getDevice(): Promise<DeviceHealth> {
-    return parseJson(await fetch('/api/device'))
+    return parseJson(await agentFetch('/api/device'))
   },
 
   async captureScreenshot(): Promise<Blob> {
-    const response = await fetch('/api/screenshots', { method: 'POST' })
+    const response = await agentFetch('/api/screenshots', { method: 'POST' })
     if (!response.ok) throw new Error(await response.text())
     if (!response.headers.get('content-type')?.startsWith('image/')) {
       throw new Error('Agent chưa kết nối hoặc không trả về ảnh')
@@ -49,12 +73,12 @@ export const agentApi = {
   },
 
   async getWorkflow(): Promise<WorkflowDocument> {
-    return parseJson(await fetch('/api/workflows/default'))
+    return parseJson(await agentFetch('/api/workflows/default'))
   },
 
   async saveWorkflow(workflow: WorkflowDocument): Promise<WorkflowDocument> {
     return parseJson(
-      await fetch('/api/workflows/default', {
+      await agentFetch('/api/workflows/default', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(workflow),
@@ -64,7 +88,7 @@ export const agentApi = {
 
   async uploadTemplate(upload: TemplateUpload): Promise<TemplateRecord> {
     return parseJson(
-      await fetch(`/api/templates/${encodeURIComponent(upload.record.id)}`, {
+      await agentFetch(`/api/templates/${encodeURIComponent(upload.record.id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(upload),
@@ -74,7 +98,7 @@ export const agentApi = {
 
   async startRun(workflowId: string): Promise<RunStatus> {
     return parseJson(
-      await fetch('/api/runs', {
+      await agentFetch('/api/runs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workflowId }),
@@ -83,10 +107,10 @@ export const agentApi = {
   },
 
   async stopRun(): Promise<RunStatus> {
-    return parseJson(await fetch('/api/runs/current/stop', { method: 'POST' }))
+    return parseJson(await agentFetch('/api/runs/current/stop', { method: 'POST' }))
   },
 
   async getRunStatus(): Promise<RunStatus> {
-    return parseJson(await fetch('/api/runs/current'))
+    return parseJson(await agentFetch('/api/runs/current'))
   },
 }

@@ -76,6 +76,10 @@ class WorkflowExecutor(private val store: AgentStore) {
             while (!cancellation.get()) {
                 check(++steps <= MAX_STEPS) { "Workflow exceeded $MAX_STEPS node executions" }
                 val nodeId = node.getString("id")
+                if (node.getString("type") == "LOOP") {
+                    val maximum = node.optJSONObject("config")?.optInt("maxIterations", 0) ?: 0
+                    check(maximum <= 0 || iteration < maximum) { "Loop limit of $maximum iterations reached" }
+                }
                 status.updateAndGet { it.copy(currentNodeId = nodeId, iteration = iteration) }
                 val outcome = executeNode(node, runId).also {
                     if (node.getString("type") == "LOOP") iteration++
@@ -199,4 +203,3 @@ class WorkflowExecutor(private val store: AgentStore) {
         private const val MAX_STEPS = 100_000
     }
 }
-

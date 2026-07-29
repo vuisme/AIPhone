@@ -23,9 +23,9 @@ object RootGateway {
     }
 
     fun captureScreen(): ByteArray {
-        val rooted = runRoot(listOf("screencap", "-p"), timeoutSeconds = 8)
+        val rooted = runRoot(listOf("screencap", "-p"), timeoutSeconds = 8, mergeError = false)
         if (rooted.isSuccess && rooted.output.isNotEmpty()) return rooted.output
-        val direct = runProcess(listOf("screencap", "-p"), timeoutSeconds = 8)
+        val direct = runProcess(listOf("screencap", "-p"), timeoutSeconds = 8, mergeError = false)
         check(direct.isSuccess && direct.output.isNotEmpty()) { "Screenshot failed: ${direct.text}" }
         return direct.output
     }
@@ -43,23 +43,28 @@ object RootGateway {
 
     fun executeSafe(args: List<String>): CommandResult = runRoot(args)
 
-    private fun runRoot(args: List<String>, timeoutSeconds: Long = 15): CommandResult {
+    private fun runRoot(args: List<String>, timeoutSeconds: Long = 15, mergeError: Boolean = true): CommandResult {
         val command = args.joinToString(" ") { shellQuote(it) }
-        return runProcess(listOf("su", "-c", command), timeoutSeconds)
+        return runProcess(listOf("su", "-c", command), timeoutSeconds, mergeError)
     }
 
-    private fun runProcess(args: List<String>, timeoutSeconds: Long): CommandResult {
+    private fun runProcess(args: List<String>, timeoutSeconds: Long, mergeError: Boolean = true): CommandResult {
         return try {
-            val process = ProcessBuilder(args).redirectErrorStream(true).start()
+            val process = ProcessBuilder(args).redirectErrorStream(mergeError).start()
             val output = ByteArrayOutputStream()
+            val errorOutput = ByteArrayOutputStream()
             val reader = Thread { process.inputStream.use { it.copyTo(output) } }.apply { start() }
+            val errorReader = if (mergeError) null else Thread { process.errorStream.use { it.copyTo(errorOutput) } }.apply { start() }
             if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 reader.join(1000)
+                errorReader?.join(1000)
                 CommandResult(-1, "Command timed out".toByteArray())
             } else {
                 reader.join(1000)
-                CommandResult(process.exitValue(), output.toByteArray())
+                errorReader?.join(1000)
+                val exitCode = process.exitValue()
+                CommandResult(exitCode, if (exitCode == 0 || mergeError) output.toByteArray() else errorOutput.toByteArray())
             }
         } catch (error: Exception) {
             CommandResult(-1, (error.message ?: error.javaClass.simpleName).toByteArray())
@@ -68,4 +73,3 @@ object RootGateway {
 
     private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
 }
-

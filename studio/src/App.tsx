@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Camera, CircleStop, CloudOff, Cpu, Play, Save, Smartphone, Wifi } from 'lucide-react'
-import { agentApi, type DeviceHealth, type RunStatus, type TemplateUpload } from './api/client'
+import { agentApi, hasAgentToken, setAgentToken, type DeviceHealth, type RunStatus, type TemplateUpload } from './api/client'
 import { createStarterWorkflow, validateWorkflow, type WorkflowDocument } from './contracts/workflow'
 import { TemplateCapture } from './features/templates/TemplateCapture'
 import { WorkflowCanvas } from './features/workflows/WorkflowCanvas'
@@ -23,6 +23,8 @@ export function App() {
   const [isCaptureOpen, setCaptureOpen] = useState(false)
   const [notice, setNotice] = useState<string>()
   const [isSaving, setIsSaving] = useState(false)
+  const [showPairing, setShowPairing] = useState(!hasAgentToken())
+  const [pairingInput, setPairingInput] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -146,6 +148,21 @@ export function App() {
 
       {isCaptureOpen && (
         <TemplateCapture capture={agentApi.captureScreenshot} onClose={() => setCaptureOpen(false)} onSave={saveTemplate} />
+      )}
+
+      {showPairing && (
+        <div className="modal-backdrop pairing-backdrop">
+          <section className="pairing-card" role="dialog" aria-modal="true" aria-labelledby="pairing-title">
+            <span>SECURE ROOT CHANNEL</span>
+            <h2 id="pairing-title">Ghép nối với Android Agent</h2>
+            <p>Nhập pairing token hiển thị trong app AIPhone Agent. Token chỉ tồn tại trong phiên trình duyệt này.</p>
+            <input id="pairing-token" name="pairing-token" aria-label="Pairing token" autoFocus value={pairingInput} onChange={(event) => setPairingInput(event.target.value)} placeholder="xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx" />
+            <div>
+              <button className="secondary-button" onClick={() => setShowPairing(false)}>Dùng bản nháp offline</button>
+              <button className="primary-button" disabled={pairingInput.replace(/\s/g, '').length < 16} onClick={() => { setAgentToken(pairingInput); window.location.reload() }}>Kết nối Agent</button>
+            </div>
+          </section>
+        </div>
       )}
     </main>
   )

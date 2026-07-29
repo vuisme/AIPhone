@@ -4,12 +4,23 @@ import android.content.Context
 import android.util.Base64
 import org.json.JSONObject
 import java.io.File
+import java.security.SecureRandom
 
 class AgentStore(context: Context) {
     private val root = File(context.filesDir, "aiphone").apply { mkdirs() }
     private val workflowFile = File(root, "workflow-default.json")
+    private val accessTokenFile = File(root, "access-token.txt")
     private val templateDirectory = File(root, "templates").apply { mkdirs() }
     val runDirectory = File(root, "runs").apply { mkdirs() }
+
+    @Synchronized
+    fun accessToken(): String {
+        if (!accessTokenFile.exists()) {
+            val bytes = ByteArray(16).also { SecureRandom().nextBytes(it) }
+            writeAtomically(accessTokenFile, bytes.joinToString("") { "%02x".format(it) }.toByteArray())
+        }
+        return accessTokenFile.readText().trim()
+    }
 
     @Synchronized
     fun readWorkflow(): String {

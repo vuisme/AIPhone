@@ -87,12 +87,18 @@ class AgentHttpServer(
 
     private fun route(request: HttpRequest): HttpResponse {
         return try {
+            if (request.path.startsWith("/api/") && request.headers["x-aiphone-token"] != store.accessToken()) {
+                return HttpResponse.json(401, errorJson("UNAUTHORIZED", "Pairing token is missing or invalid"))
+            }
             when {
                 request.method == "GET" && request.path == "/api/device" -> deviceHealth()
                 request.method == "POST" && request.path == "/api/screenshots" -> HttpResponse(200, "image/png", RootGateway.captureScreen())
                 request.method == "GET" && request.path == "/api/workflows/default" -> HttpResponse(200, "application/json; charset=utf-8", store.readWorkflow().toByteArray())
                 request.method == "PUT" && request.path == "/api/workflows/default" -> HttpResponse(200, "application/json; charset=utf-8", store.saveWorkflow(request.body).toByteArray())
                 request.method == "PUT" && request.path.startsWith("/api/templates/") -> {
+                    val pathId = request.path.substringAfterLast('/')
+                    val bodyId = JSONObject(request.body.toString(Charsets.UTF_8)).getJSONObject("record").getString("id")
+                    require(pathId == bodyId) { "Template path and body IDs must match" }
                     HttpResponse(200, "application/json; charset=utf-8", store.saveTemplate(request.body).toByteArray())
                 }
                 request.method == "POST" && request.path == "/api/runs" -> {
@@ -133,9 +139,11 @@ class AgentHttpServer(
         val relative = decoded.removePrefix("/").ifBlank { "index.html" }
         if (relative.contains("..") || relative.contains('\\')) return HttpResponse.text(400, "Invalid path")
         val assetPath = "studio/$relative"
-        val bytes = runCatching { context.assets.open(assetPath).use { it.readBytes() } }
-            .getOrElse { context.assets.open("studio/index.html").use { it.readBytes() } }
-        return HttpResponse(200, mimeType(relative), bytes)
+        return try {
+            HttpResponse(200, mimeType(relative), context.assets.open(assetPath).use { it.readBytes() })
+        } catch (_: Exception) {
+            HttpResponse(200, "text/html; charset=utf-8", context.assets.open("studio/index.html").use { it.readBytes() })
+        }
     }
 
     private fun readRequest(input: BufferedInputStream): HttpRequest {
@@ -174,7 +182,7 @@ class AgentHttpServer(
 
     private fun writeResponse(output: BufferedOutputStream, response: HttpResponse) {
         val reason = when (response.status) {
-            200 -> "OK"; 204 -> "No Content"; 400 -> "Bad Request"; 404 -> "Not Found"
+            200 -> "OK"; 204 -> "No Content"; 400 -> "Bad Request"; 401 -> "Unauthorized"; 404 -> "Not Found"
             405 -> "Method Not Allowed"; 409 -> "Conflict"; 422 -> "Unprocessable Entity"; else -> "Internal Server Error"
         }
         val headers = buildString {

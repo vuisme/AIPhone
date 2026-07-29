@@ -1,0 +1,29 @@
+# Local Android tooling copied into the workspace
+adb-tool/
+
+# JavaScript
+node_modules/
+dist/
+coverage/
+
+# Android and Gradle
+.gradle/
+build/
+**/build/
+local.properties
+*.jks
+*.keystore
+
+# IDE and OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Secrets and local artifacts
+.env
+.env.*
+!.env.example
+artifacts/
+

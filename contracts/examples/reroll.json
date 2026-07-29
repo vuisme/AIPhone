@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "lien-quan-reroll",
+  "name": "Liên Quân reroll",
+  "revision": 1,
+  "nodes": [
+    { "id": "start", "type": "START", "position": { "x": 80, "y": 200 }, "config": {} },
+    { "id": "clone", "type": "CREATE_CLONE", "position": { "x": 300, "y": 200 }, "config": { "packageName": "com.garena.game.kgvn", "userId": 999 } },
+    { "id": "launch", "type": "LAUNCH_APP", "position": { "x": 540, "y": 200 }, "config": { "packageName": "com.garena.game.kgvn", "userId": 999 } },
+    { "id": "wait-reward", "type": "WAIT_IMAGE", "position": { "x": 780, "y": 200 }, "config": { "templateId": "desired-reward", "threshold": 0.88, "timeoutMs": 60000, "pollIntervalMs": 500 } },
+    { "id": "success", "type": "SUCCESS", "position": { "x": 1040, "y": 100 }, "config": { "message": "Đã tìm thấy quà" } },
+    { "id": "delete", "type": "DELETE_CLONE", "position": { "x": 1040, "y": 300 }, "config": { "packageName": "com.garena.game.kgvn", "userId": 999 } },
+    { "id": "loop", "type": "LOOP", "position": { "x": 780, "y": 380 }, "config": { "maxIterations": 0 } }
+  ],
+  "edges": [
+    { "id": "e1", "source": "start", "target": "clone" },
+    { "id": "e2", "source": "clone", "target": "launch" },
+    { "id": "e3", "source": "launch", "target": "wait-reward" },
+    { "id": "e4", "source": "wait-reward", "target": "success", "sourceHandle": "FOUND" },
+    { "id": "e5", "source": "wait-reward", "target": "delete", "sourceHandle": "TIMEOUT" },
+    { "id": "e6", "source": "delete", "target": "loop" },
+    { "id": "e7", "source": "loop", "target": "clone" }
+  ],
+  "templates": [
+    {
+      "id": "desired-reward",
+      "name": "Quà mong muốn",
+      "fileName": "desired-reward.png",
+      "threshold": 0.88,
+      "width": 120,
+      "height": 120,
+      "updatedAt": "2026-07-29T00:00:00.000Z"
+    }
+  ],
+  "createdAt": "2026-07-29T00:00:00.000Z",
+  "updatedAt": "2026-07-29T00:00:00.000Z"
+}

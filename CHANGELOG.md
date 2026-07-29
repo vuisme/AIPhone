@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.3] - 2026-07-29
+
+### Fixed
+
+- Enabled Android `BuildConfig` generation so release compilation succeeds on GitHub Actions.
+
+### Delivery
+
+- Published the public `vuisme/AIPhone` repository with signed, upgradeable APK builds.
+
 ## [0.1.0] - 2026-07-29
 
 ### Added

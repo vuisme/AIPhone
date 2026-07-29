@@ -27,16 +27,18 @@ Required repository secrets:
 
 ## Install and update
 
+Download the latest signed APK from the repository's [Releases](https://github.com/vuisme/AIPhone/releases) page.
+
 Connect the phone with USB debugging enabled:
 
 ```powershell
-.\adb-tool\adb.exe install AIPhone-v0.1.1.apk
+.\adb-tool\adb.exe install AIPhone-v0.1.3.apk
 ```
 
 Future versions use the same application ID and GitHub signing key. Install them over the existing app while preserving data:
 
 ```powershell
-.\adb-tool\adb.exe install -r AIPhone-v0.1.2.apk
+.\adb-tool\adb.exe install -r AIPhone-v0.1.3.apk
 ```
 
 Do not uninstall the existing app if its local workflows/templates must be preserved.

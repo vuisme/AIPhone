@@ -2,7 +2,7 @@
 
 ## Overview
 
-Build a private GitHub repository containing a browser-based no-code Studio and a rooted Android Agent. The Agent serves Studio over a local HTTP port, captures screenshots, stores templates, executes a versioned workflow graph, and exposes structured root operations for HyperOS XSpace. GitHub Actions builds and signs an upgradeable APK.
+Build a public GitHub repository containing a browser-based no-code Studio and a rooted Android Agent. The Agent serves Studio over a local HTTP port, captures screenshots, stores templates, executes a versioned workflow graph, and exposes structured root operations for HyperOS XSpace. GitHub Actions builds and signs an upgradeable APK.
 
 ## Architecture Decisions
 
@@ -79,4 +79,3 @@ Checkpoint: GitHub Actions is green and a signed APK is available locally and as
 - Android tests and APK build run in GitHub Actions.
 - APK signature and version metadata are inspected after artifact download.
 - Repository status is clean and no secret/private key is committed.
-

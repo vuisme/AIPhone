@@ -5,6 +5,7 @@ adb-tool/
 node_modules/
 dist/
 coverage/
+*.log
 
 # Android and Gradle
 .gradle/
@@ -26,4 +27,3 @@ Thumbs.db
 .env.*
 !.env.example
 artifacts/
-

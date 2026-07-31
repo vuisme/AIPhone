@@ -45,7 +45,25 @@ Future versions use the same application ID and GitHub signing key. Install them
 
 Do not uninstall the existing app if its local workflows/templates must be preserved.
 
-## Start standalone Studio
+## Start Studio with Docker
+
+Requirements on Windows:
+
+- Docker Desktop.
+- Node.js 22 or newer for the loopback USB bridge.
+- ADB available through `AIPHONE_ADB`, `adb-tool/adb.exe`, or `PATH`.
+
+Start the published Studio image and the local USB bridge with one command:
+
+```powershell
+.\studio\start-docker.cmd
+```
+
+Build the image from the current checkout by adding `-Build`. Stop both processes with `.\studio\stop-docker.cmd`.
+
+Docker serves the web UI at `127.0.0.1:4173`. The small USB bridge remains on the Windows host at `127.0.0.1:4174`, because Linux containers under Docker Desktop cannot reliably access Windows USB devices. Neither endpoint is exposed to the LAN.
+
+## Start Studio without Docker
 
 Requirements on the PC:
 
@@ -55,9 +73,9 @@ Requirements on the PC:
 Build and start from the repository:
 
 ```powershell
-npm --prefix studio ci
-npm --prefix studio run build
-.\desktop-host\start-studio.cmd
+npm --prefix studio/web ci
+npm --prefix studio/web run build
+.\studio\start-native.cmd
 ```
 
 Then:
@@ -72,8 +90,9 @@ The PC host creates a separate ADB forward for the selected serial. The Agent re
 
 ## Repository layout
 
-- `studio/` - React no-code editor and template crop UI.
-- `desktop-host/` - loopback-only Studio server and per-device USB ADB bridge.
+- `studio/web/` - React no-code editor and template crop UI.
+- `studio/host/` - loopback-only Studio server and per-device USB ADB bridge.
+- `studio/` - Docker, Compose and one-command launchers for the complete PC Studio.
 - `android-agent/` - Kotlin Android Agent, local API and workflow executor.
 - `contracts/` - versioned workflow JSON contract and examples.
 - `docs/spec.md` - approved product specification.

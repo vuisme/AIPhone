@@ -1,0 +1,12 @@
+name: aiphone
+
+services:
+  studio:
+    image: ghcr.io/vuisme/aiphone-studio:latest
+    build:
+      context: ..
+      dockerfile: studio/Dockerfile
+    container_name: aiphone-studio
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4173:4173"

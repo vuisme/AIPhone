@@ -2,6 +2,7 @@ import type { TemplateRecord, WorkflowDocument } from '../contracts/workflow'
 
 const TOKEN_KEY = 'aiphone.pairing-token'
 const DEVICE_KEY = 'aiphone.adb-serial'
+const BRIDGE_ORIGIN = (import.meta.env.VITE_BRIDGE_ORIGIN ?? '').replace(/\/$/, '')
 let selectedSerial = sessionStorage.getItem(DEVICE_KEY) ?? ''
 
 function tokenKey(serial = selectedSerial): string {
@@ -17,7 +18,7 @@ if (queryToken) {
 let pairingToken = sessionStorage.getItem(tokenKey()) ?? ''
 
 export function buildAgentPath(path: string, serial = selectedSerial): string {
-  return serial ? `/bridge/devices/${encodeURIComponent(serial)}${path}` : path
+  return serial ? `${BRIDGE_ORIGIN}/bridge/devices/${encodeURIComponent(serial)}${path}` : path
 }
 
 export function getAgentDeviceSerial(): string {
@@ -32,7 +33,7 @@ export function setAgentDeviceSerial(serial: string) {
 }
 
 export function isStandaloneStudio(): boolean {
-  return window.location.port === '4173'
+  return BRIDGE_ORIGIN.length > 0 || window.location.port === '4173'
 }
 
 export function setAgentToken(value: string) {
@@ -94,7 +95,7 @@ export interface TemplateUpload {
 
 export const bridgeApi = {
   async getDevices(): Promise<AdbDevice[]> {
-    const response = await fetch('/bridge/devices', { cache: 'no-store' })
+    const response = await fetch(`${BRIDGE_ORIGIN}/bridge/devices`, { cache: 'no-store' })
     const result = await parseJson<{ devices: AdbDevice[] }>(response)
     return result.devices
   },

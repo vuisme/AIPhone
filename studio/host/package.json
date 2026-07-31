@@ -1,5 +1,5 @@
 {
-  "name": "aiphone-desktop-host",
+  "name": "aiphone-studio-host",
   "private": true,
   "type": "module",
   "scripts": {

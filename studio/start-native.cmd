@@ -9,5 +9,5 @@ if errorlevel 1 (
 )
 echo Opening AIPhone Studio at http://127.0.0.1:4173
 start "" http://127.0.0.1:4173
-node desktop-host\server.mjs
+node studio\host\server.mjs
 if errorlevel 1 pause

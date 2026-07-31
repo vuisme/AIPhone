@@ -13,6 +13,7 @@ Build a public GitHub repository containing a browser-based no-code Studio and a
 - Store the signing keystore only in GitHub Secrets and derive `versionCode` from the Actions run number.
 - Restrict root commands to typed operations and the configured package/user pair.
 - Run Studio independently on the PC through a loopback-only Node.js host.
+- Package the Studio web UI as a Docker image while keeping USB ADB on the Windows host.
 - Select Android targets from ADB serials and proxy through per-device forwards; defer LAN discovery.
 - Keep numeric `userId` in the contract while presenting `App chính` and `App kép / XSpace` in Studio.
 
@@ -74,6 +75,14 @@ Checkpoint: GitHub Actions is green and a signed APK is available locally and as
 - Task 17: Package, verify and publish the upgraded APK and PC Studio artifact.
 
 Checkpoint: Studio at `127.0.0.1:4173` selects the connected phone, edits workflows, deletes edges and tests one node without running the full graph.
+
+### Phase 6: Containerized Studio
+
+- Task 18: Group Studio web, USB bridge and launchers under one project directory.
+- Task 19: Package the web UI with Docker and keep the USB bridge loopback-only on Windows.
+- Task 20: Publish the Studio image to GHCR and package Docker launchers in the release artifact.
+
+Checkpoint: `studio/start-docker.cmd` starts the published UI container and local USB bridge, and Studio remains reachable only through PC loopback.
 
 ## Risks and Mitigations
 

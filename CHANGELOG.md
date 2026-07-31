@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Docker image and Compose deployment for the PC Studio web UI.
+- One-command Windows launchers that coordinate the Docker UI with the loopback USB bridge.
+- GitHub Actions publishing to `ghcr.io/vuisme/aiphone-studio`.
+
+### Changed
+
+- Grouped the React editor and desktop USB bridge under a single `studio/` project directory.
+
 ## [0.1.5] - 2026-07-31
 
 ### Fixed

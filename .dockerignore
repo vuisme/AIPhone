@@ -1,0 +1,12 @@
+.git
+.github
+adb-tool
+android-agent
+artifacts
+contracts
+docs
+tasks
+**/node_modules
+**/dist
+*.log
+.env*

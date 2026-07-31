@@ -6,7 +6,14 @@ import { fileURLToPath } from 'node:url'
 import { AdbBridge } from './adb.mjs'
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
-const studioDirectory = path.resolve(moduleDirectory, '..', 'studio', 'dist')
+const studioDirectory = path.resolve(moduleDirectory, '..', 'web', 'dist')
+const BRIDGE_ORIGINS = new Set(['http://127.0.0.1:4173', 'http://localhost:4173'])
+const SECURITY_HEADERS = {
+  'Content-Security-Policy': "default-src 'self'; connect-src 'self' http://127.0.0.1:4174 http://localhost:4174; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+  'Referrer-Policy': 'no-referrer',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+}
 const API_PATHS = [
   /^\/api\/device$/,
   /^\/api\/screenshots$/,
@@ -30,15 +37,28 @@ export function agentPathFromBridgeUrl(rawUrl, serial) {
   return target
 }
 
-function json(response, status, body) {
+function json(response, status, body, extraHeaders = {}) {
   const data = Buffer.from(JSON.stringify(body))
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': data.length,
     'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
+    ...SECURITY_HEADERS,
+    ...extraHeaders,
   })
   response.end(data)
+}
+
+export function bridgeCorsHeaders(origin) {
+  if (!origin) return {}
+  if (!BRIDGE_ORIGINS.has(origin)) return null
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-AIPhone-Token',
+    'Access-Control-Max-Age': '600',
+    Vary: 'Origin',
+  }
 }
 
 async function serveStudio(request, response) {
@@ -63,11 +83,11 @@ async function serveStudio(request, response) {
     '.png': 'image/png',
     '.ico': 'image/x-icon',
   }[extension] || 'application/octet-stream'
-  response.writeHead(200, { 'Content-Type': contentType, 'X-Content-Type-Options': 'nosniff' })
+  response.writeHead(200, { 'Content-Type': contentType, ...SECURITY_HEADERS })
   createReadStream(target).pipe(response)
 }
 
-function proxyToAgent(request, response, port, targetPath, onError) {
+function proxyToAgent(request, response, port, targetPath, onError, extraHeaders = {}) {
   const proxy = http.request({
     hostname: '127.0.0.1',
     port,
@@ -78,7 +98,8 @@ function proxyToAgent(request, response, port, targetPath, onError) {
     response.writeHead(agentResponse.statusCode || 502, {
       ...agentResponse.headers,
       'cache-control': 'no-store',
-      'x-content-type-options': 'nosniff',
+      ...SECURITY_HEADERS,
+      ...extraHeaders,
     })
     agentResponse.pipe(response)
   })
@@ -86,45 +107,66 @@ function proxyToAgent(request, response, port, targetPath, onError) {
   proxy.on('error', (error) => {
     onError?.()
     if (response.headersSent) response.destroy(error)
-    else json(response, 502, { error: error.message })
+    else json(response, 502, { error: error.message }, extraHeaders)
   })
   request.pipe(proxy)
 }
 
-export function createStudioServer({ bridge = new AdbBridge() } = {}) {
+export function createStudioServer({ bridge = new AdbBridge(), bridgeOnly = false, staticOnly = false } = {}) {
   return http.createServer(async (request, response) => {
+    let responseHeaders = {}
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
+      const corsHeaders = bridgeOnly ? bridgeCorsHeaders(request.headers.origin) : {}
+      if (corsHeaders === null) return json(response, 403, { error: 'Origin is not allowed' })
+      responseHeaders = corsHeaders
+      if (bridgeOnly && request.method === 'OPTIONS' && url.pathname.startsWith('/bridge/')) {
+        response.writeHead(204, corsHeaders)
+        return response.end()
+      }
+      if (request.method === 'GET' && url.pathname === '/healthz') {
+        return json(response, 200, { status: 'ok', mode: staticOnly ? 'static' : bridgeOnly ? 'bridge' : 'full' }, corsHeaders)
+      }
+      if (staticOnly && url.pathname.startsWith('/bridge/')) {
+        return json(response, 404, { error: 'USB bridge runs on the host' })
+      }
       if (request.method === 'GET' && url.pathname === '/bridge/devices') {
-        return json(response, 200, { devices: await bridge.listDevices() })
+        return json(response, 200, { devices: await bridge.listDevices() }, corsHeaders)
       }
       const match = url.pathname.match(/^\/bridge\/devices\/([^/]+)\/api\//)
       if (match) {
         const serial = decodeURIComponent(match[1])
         const devices = await bridge.listDevices()
         const device = devices.find((candidate) => candidate.serial === serial && candidate.state === 'device')
-        if (!device) return json(response, 404, { error: 'ADB device is not connected' })
+        if (!device) return json(response, 404, { error: 'ADB device is not connected' }, corsHeaders)
         const targetPath = agentPathFromBridgeUrl(request.url, serial)
         const port = await bridge.ensureForward(serial)
-        return proxyToAgent(request, response, port, targetPath, () => bridge.forgetForward(serial))
+        return proxyToAgent(request, response, port, targetPath, () => bridge.forgetForward(serial), corsHeaders)
       }
-      if (url.pathname.startsWith('/bridge/')) return json(response, 404, { error: 'Unknown bridge resource' })
+      if (url.pathname.startsWith('/bridge/')) return json(response, 404, { error: 'Unknown bridge resource' }, corsHeaders)
+      if (bridgeOnly) return json(response, 404, { error: 'Unknown bridge resource' }, corsHeaders)
       if (request.method !== 'GET' && request.method !== 'HEAD') return json(response, 405, { error: 'Method not allowed' })
       return serveStudio(request, response)
     } catch (error) {
-      return json(response, 400, { error: error instanceof Error ? error.message : 'Invalid request' })
+      return json(response, 400, { error: error instanceof Error ? error.message : 'Invalid request' }, responseHeaders)
     }
   })
 }
 
-export function startStudioServer({ port = 4173 } = {}) {
-  const server = createStudioServer()
-  server.listen(port, '127.0.0.1', () => {
-    process.stdout.write(`AIPhone Studio: http://127.0.0.1:${port}\n`)
+export function startStudioServer({ port = 4173, host = '127.0.0.1', bridgeOnly = false, staticOnly = false } = {}) {
+  const server = createStudioServer({ bridgeOnly, staticOnly })
+  server.listen(port, host, () => {
+    process.stdout.write(`AIPhone Studio (${staticOnly ? 'static' : bridgeOnly ? 'bridge' : 'full'}): http://${host}:${port}\n`)
   })
   return server
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  startStudioServer()
+  const bridgeOnly = process.argv.includes('--bridge-only') || process.env.AIPHONE_BRIDGE_ONLY === '1'
+  const staticOnly = process.argv.includes('--static-only') || process.env.AIPHONE_STATIC_ONLY === '1'
+  const portArgument = process.argv.find((argument) => argument.startsWith('--port='))?.split('=', 2)[1]
+  const parsedPort = Number.parseInt(portArgument || process.env.AIPHONE_STUDIO_PORT || '', 10)
+  const port = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : bridgeOnly ? 4174 : 4173
+  const host = process.env.AIPHONE_STUDIO_HOST || (staticOnly ? '0.0.0.0' : '127.0.0.1')
+  startStudioServer({ port, host, bridgeOnly, staticOnly })
 }

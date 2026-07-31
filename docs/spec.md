@@ -89,8 +89,10 @@ The Android Agent is the source of truth. Studio only edits resources and observ
 - Creates isolated `adb forward` mappings per selected device serial
 - Proxies only `/api/*` requests to the fixed Agent port `8765`
 - Never accepts arbitrary target URLs, hosts, ports or shell arguments from the browser
+- Supports a bridge-only mode at `127.0.0.1:4174` for the Docker-hosted Studio UI
+- Allows cross-origin bridge requests only from local Studio origins on port `4173`
 
-The listed web versions are locked in `studio/package-lock.json`.
+The listed web versions are locked in `studio/web/package-lock.json`.
 
 ### Android Agent
 
@@ -317,17 +319,20 @@ android-agent/                 Android application and embedded server
   app/src/main/
   app/src/test/
   app/src/androidTest/
-studio/                        React no-code editor
-  src/components/
-  src/features/workflows/
-  src/features/templates/
-  src/features/runs/
-  src/lib/api/
-  src/**/*.test.ts(x)
-desktop-host/                  Standalone PC Studio server and USB ADB bridge
-  server.mjs
-  adb.mjs
-  test/
+studio/                        Complete PC Studio project
+  web/                         React no-code editor
+    src/features/workflows/
+    src/features/templates/
+    src/features/runs/
+    src/api/
+    src/**/*.test.ts(x)
+  host/                        Standalone server and USB ADB bridge
+    server.mjs
+    adb.mjs
+    test/
+  Dockerfile
+  compose.yml
+  start-docker.cmd
 contracts/                     Versioned JSON schemas and generated types
 docs/                          Product and architecture documentation
 tasks/                         Approved implementation plan and task list
@@ -338,15 +343,18 @@ tasks/                         Approved implementation plan and task list
 Planned commands after scaffolding:
 
 ```powershell
-# Studio
-npm --prefix studio install
-npm --prefix studio run dev
-npm --prefix studio run test
-npm --prefix studio run build
+# Studio web
+npm --prefix studio/web install
+npm --prefix studio/web run dev
+npm --prefix studio/web run test
+npm --prefix studio/web run build
 
 # Standalone PC Studio Host (build Studio first)
-node --test desktop-host/test/*.test.mjs
-node desktop-host/server.mjs
+node --test studio/host/test/*.test.mjs
+node studio/host/server.mjs
+
+# Docker Studio plus Windows USB bridge
+.\studio\start-docker.cmd
 
 # Android
 .\android-agent\gradlew.bat test

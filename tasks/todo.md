@@ -18,12 +18,12 @@
 - [x] Task 4: Implement no-code graph editor
   - Acceptance: nodes can be added, connected, selected, edited and removed
   - Verify: component tests and production build pass
-  - Files: `studio/src/features/workflows/`
+  - Files: `studio/web/src/features/workflows/`
 
 - [x] Task 5: Implement screenshot crop/template manager
   - Acceptance: crop uses original pixels and can test/upload a template
   - Verify: coordinate conversion tests and browser runtime check pass
-  - Files: `studio/src/features/templates/`
+  - Files: `studio/web/src/features/templates/`
 
 - [x] Task 6: Scaffold Android Agent and local server
   - Acceptance: foreground service serves Studio and `/api/device`
@@ -63,7 +63,7 @@
 - [x] Task 13: Add standalone PC Studio Host for USB devices
   - Acceptance: host serves Studio on loopback, lists `adb devices -l` and proxies only through validated serials
   - Verify: Node tests cover ADB parsing, serial validation and proxy path restrictions
-  - Files: `desktop-host/`
+  - Files: `studio/host/`
 
 - [x] Task 14: Add single-node test execution on Android
   - Acceptance: API starts exactly one saved node and reports through the existing run status without following edges
@@ -80,7 +80,22 @@
   - Verify: UI tests cover safe/destructive nodes and numeric contract mapping
   - Files: workflow inspector, App actions and styles
 
-- [ ] Task 17: Package and publish the USB Studio release
+- [x] Task 17: Package and publish the USB Studio release
   - Acceptance: CI uploads signed APK plus standalone PC Studio artifact
   - Verify: green CI, real-device USB selection, node test and upgrade install
   - Files: workflow, README, changelog and release metadata
+
+- [x] Task 18: Consolidate the PC Studio project
+  - Acceptance: React web, USB bridge and launchers live under `studio/`
+  - Verify: web and bridge tests pass after path migration
+  - Files: `studio/web/`, `studio/host/`, CI paths and documentation
+
+- [x] Task 19: Add a safe Docker deployment for Windows USB use
+  - Acceptance: Docker serves only the UI while the USB bridge remains loopback-only on Windows
+  - Verify: Compose config, bridge CORS tests, web build and launcher syntax checks pass
+  - Files: Dockerfile, Compose, launchers and bridge mode handling
+
+- [ ] Task 20: Publish and verify the Studio container
+  - Acceptance: GHCR exposes `ghcr.io/vuisme/aiphone-studio:latest` and the launcher pulls it successfully
+  - Verify: green container workflow and local health checks on ports `4173` and `4174`
+  - Files: container workflow and release metadata

@@ -22,10 +22,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: studio/package-lock.json
+          cache-dependency-path: studio/web/package-lock.json
 
       - name: Test and build Studio
-        working-directory: studio
+        working-directory: studio/web
         run: |
           npm ci
           npm test
@@ -33,13 +33,13 @@ jobs:
           npm run build
 
       - name: Test desktop USB bridge
-        working-directory: desktop-host
+        working-directory: studio/host
         run: npm test
 
       - name: Bundle Studio into Android assets
         run: |
           mkdir -p android-agent/app/src/main/assets/studio
-          cp -R studio/dist/. android-agent/app/src/main/assets/studio/
+          cp -R studio/web/dist/. android-agent/app/src/main/assets/studio/
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -91,9 +91,12 @@ jobs:
       - name: Package standalone Studio
         run: |
           PACKAGE="artifacts/AIPhone-Studio-v0.1.${GITHUB_RUN_NUMBER}"
-          mkdir -p "$PACKAGE/desktop-host" "$PACKAGE/studio"
-          cp desktop-host/adb.mjs desktop-host/server.mjs desktop-host/package.json desktop-host/start-studio.cmd "$PACKAGE/desktop-host/"
-          cp -R studio/dist "$PACKAGE/studio/"
+          mkdir -p "$PACKAGE/studio/host" "$PACKAGE/studio/web"
+          cp studio/host/adb.mjs studio/host/server.mjs studio/host/package.json "$PACKAGE/studio/host/"
+          cp -R studio/web/dist studio/web/public studio/web/src "$PACKAGE/studio/web/"
+          cp studio/web/index.html studio/web/package.json studio/web/package-lock.json studio/web/tsconfig.json studio/web/vite.config.ts "$PACKAGE/studio/web/"
+          cp studio/Dockerfile studio/compose.yml studio/start-docker.cmd studio/start-docker.ps1 studio/stop-docker.cmd studio/stop-docker.ps1 studio/start-native.cmd studio/README.md "$PACKAGE/studio/"
+          cp .dockerignore "$PACKAGE/.dockerignore"
           cp README.md "$PACKAGE/README.md"
           cd artifacts
           zip -r "AIPhone-Studio-v0.1.${GITHUB_RUN_NUMBER}.zip" "AIPhone-Studio-v0.1.${GITHUB_RUN_NUMBER}"

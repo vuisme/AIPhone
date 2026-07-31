@@ -48,7 +48,7 @@ export function parseAdbForwards(output) {
 
 export async function resolveAdbPath(environment = process.env) {
   if (environment.AIPHONE_ADB) return environment.AIPHONE_ADB
-  const bundled = path.resolve(moduleDirectory, '..', 'adb-tool', process.platform === 'win32' ? 'adb.exe' : 'adb')
+  const bundled = path.resolve(moduleDirectory, '..', '..', 'adb-tool', process.platform === 'win32' ? 'adb.exe' : 'adb')
   try {
     await access(bundled)
     return bundled

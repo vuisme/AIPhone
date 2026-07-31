@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5] - 2026-07-31
+
+### Fixed
+
+- Resolve the real launcher activity per Android user before starting the main or XSpace app.
+- Surface root-command output and executor failures instead of opaque node-test results.
+
+### Added
+
+- Expandable Studio logging panel with per-node timestamps, severity and automatic expansion on failure.
+- Standalone USB Studio host, ADB device selection, direct node controls and edge double-click deletion.
+
 ## [0.1.3] - 2026-07-29
 
 ### Fixed

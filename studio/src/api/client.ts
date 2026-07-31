@@ -77,6 +77,14 @@ export interface RunStatus {
   startedAt?: string
   finishedAt?: string
   iteration: number
+  logs?: RunLogEntry[]
+}
+
+export interface RunLogEntry {
+  timestamp: string
+  level: 'INFO' | 'WARN' | 'ERROR' | string
+  message: string
+  nodeId?: string
 }
 
 export interface TemplateUpload {

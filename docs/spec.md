@@ -306,6 +306,8 @@ Initial resources:
 - `GET /api/runs/:id/events` - SSE log stream.
 - `GET /api/runs/:id/artifacts` - result screenshots and logs.
 
+Run status includes a bounded structured `logs` array with timestamp, severity, optional node ID and message. Studio keeps it collapsed by default and automatically expands it when a run fails.
+
 Mutating resources use optimistic revision checks and return `409 CONFLICT` when Studio edits stale data.
 
 ## Project Structure

@@ -15,6 +15,7 @@ import {
 } from './api/client'
 import { createStarterWorkflow, validateWorkflow, type WorkflowDocument, type WorkflowNode } from './contracts/workflow'
 import { TemplateCapture } from './features/templates/TemplateCapture'
+import { RunLogPanel } from './features/runs/RunLogPanel'
 import { WorkflowCanvas } from './features/workflows/WorkflowCanvas'
 
 const LOCAL_WORKFLOW_KEY = 'aiphone.workflow.v1'
@@ -37,6 +38,7 @@ export function App() {
   const [selectedSerial, setSelectedSerial] = useState(getAgentDeviceSerial)
   const [run, setRun] = useState<RunStatus>({ id: 'idle', state: 'IDLE', iteration: 0 })
   const [isNodeTest, setIsNodeTest] = useState(false)
+  const [isLogExpanded, setLogExpanded] = useState(false)
   const [isCaptureOpen, setCaptureOpen] = useState(false)
   const [notice, setNotice] = useState<string>()
   const [isSaving, setIsSaving] = useState(false)
@@ -94,6 +96,10 @@ export function App() {
       }).catch(() => undefined)
     }, 1000)
     return () => window.clearInterval(timer)
+  }, [run.state])
+
+  useEffect(() => {
+    if (run.state === 'FAILED') setLogExpanded(true)
   }, [run.state])
 
   const validation = useMemo(() => validateWorkflow(workflow), [workflow])
@@ -228,6 +234,8 @@ export function App() {
       </section>
 
       {notice && <button className="notice-bar" onClick={() => setNotice(undefined)}>{notice}<span>Đóng</span></button>}
+
+      <RunLogPanel run={run} expanded={isLogExpanded} onToggle={() => setLogExpanded((value) => !value)} />
 
       <WorkflowCanvas workflow={workflow} activeNodeId={run.currentNodeId} onChange={changeWorkflow} onPlayNode={(node) => void playNode(node)} isNodeTestRunning={!isPaired || (isNodeTest && run.state === 'RUNNING')} />
 

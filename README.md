@@ -34,13 +34,13 @@ Download the latest signed APK from the repository's [Releases](https://github.c
 Connect the phone with USB debugging enabled:
 
 ```powershell
-.\adb-tool\adb.exe install AIPhone-v0.1.3.apk
+.\adb-tool\adb.exe install AIPhone-v0.1.5.apk
 ```
 
 Future versions use the same application ID and GitHub signing key. Install them over the existing app while preserving data:
 
 ```powershell
-.\adb-tool\adb.exe install -r AIPhone-v0.1.3.apk
+.\adb-tool\adb.exe install -r AIPhone-v0.1.5.apk
 ```
 
 Do not uninstall the existing app if its local workflows/templates must be preserved.

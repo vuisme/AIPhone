@@ -1,27 +1,61 @@
 import type { TemplateRecord, WorkflowDocument } from '../contracts/workflow'
 
 const TOKEN_KEY = 'aiphone.pairing-token'
+const DEVICE_KEY = 'aiphone.adb-serial'
+let selectedSerial = sessionStorage.getItem(DEVICE_KEY) ?? ''
+
+function tokenKey(serial = selectedSerial): string {
+  return serial ? `${TOKEN_KEY}.${serial}` : TOKEN_KEY
+}
+
 const queryToken = new URLSearchParams(window.location.search).get('token')
 if (queryToken) {
-  sessionStorage.setItem(TOKEN_KEY, queryToken.replace(/\s/g, ''))
+  sessionStorage.setItem(tokenKey(), queryToken.replace(/\s/g, ''))
   history.replaceState(null, '', window.location.pathname)
 }
 
-let pairingToken = sessionStorage.getItem(TOKEN_KEY) ?? ''
+let pairingToken = sessionStorage.getItem(tokenKey()) ?? ''
+
+export function buildAgentPath(path: string, serial = selectedSerial): string {
+  return serial ? `/bridge/devices/${encodeURIComponent(serial)}${path}` : path
+}
+
+export function getAgentDeviceSerial(): string {
+  return selectedSerial
+}
+
+export function setAgentDeviceSerial(serial: string) {
+  selectedSerial = serial
+  if (serial) sessionStorage.setItem(DEVICE_KEY, serial)
+  else sessionStorage.removeItem(DEVICE_KEY)
+  pairingToken = sessionStorage.getItem(tokenKey(serial)) ?? ''
+}
+
+export function isStandaloneStudio(): boolean {
+  return window.location.port === '4173'
+}
 
 export function setAgentToken(value: string) {
   pairingToken = value.replace(/\s/g, '')
-  sessionStorage.setItem(TOKEN_KEY, pairingToken)
+  sessionStorage.setItem(tokenKey(), pairingToken)
 }
 
 export function hasAgentToken(): boolean {
   return pairingToken.length > 0
 }
 
-function agentFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+function agentFetch(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
   if (pairingToken) headers.set('X-AIPhone-Token', pairingToken)
-  return fetch(input, { ...init, headers })
+  return fetch(buildAgentPath(path), { ...init, headers })
+}
+
+export interface AdbDevice {
+  serial: string
+  state: 'device' | 'offline' | 'unauthorized' | string
+  model: string | null
+  product: string | null
+  transportId: string | null
 }
 
 export interface DeviceHealth {
@@ -48,6 +82,14 @@ export interface RunStatus {
 export interface TemplateUpload {
   record: TemplateRecord
   imageBase64: string
+}
+
+export const bridgeApi = {
+  async getDevices(): Promise<AdbDevice[]> {
+    const response = await fetch('/bridge/devices', { cache: 'no-store' })
+    const result = await parseJson<{ devices: AdbDevice[] }>(response)
+    return result.devices
+  },
 }
 
 async function parseJson<T>(response: Response): Promise<T> {
@@ -102,6 +144,16 @@ export const agentApi = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workflowId }),
+      }),
+    )
+  },
+
+  async startNodeTest(workflowId: string, nodeId: string): Promise<RunStatus> {
+    return parseJson(
+      await agentFetch('/api/node-tests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflowId, nodeId }),
       }),
     )
   },

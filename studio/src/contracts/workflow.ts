@@ -32,6 +32,7 @@ export interface WorkflowNode {
   type: NodeType
   position: Position
   config: Record<string, unknown>
+  disabled?: boolean
 }
 
 export interface WorkflowEdge {
@@ -104,7 +105,7 @@ export function validateWorkflow(workflow: WorkflowDocument): ValidationResult {
     }
     nodeIds.add(node.id)
 
-    if (IMAGE_NODE_TYPES.has(node.type)) {
+    if (!node.disabled && IMAGE_NODE_TYPES.has(node.type)) {
       const templateId = node.config.templateId
       if (typeof templateId !== 'string' || !templateIds.has(templateId)) {
         issues.push(`Node ${node.id} references missing template ${String(templateId)}`)

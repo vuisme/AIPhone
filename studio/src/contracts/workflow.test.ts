@@ -28,6 +28,19 @@ describe('workflow validation', () => {
     expect(result.issues).toContain('Node wait-reward references missing template missing-template')
   })
 
+  it('does not require runtime config for a disabled node', () => {
+    const workflow = createStarterWorkflow()
+    workflow.nodes.push({
+      id: 'disabled-wait',
+      type: 'WAIT_IMAGE',
+      position: { x: 300, y: 120 },
+      config: { templateId: 'missing-template' },
+      disabled: true,
+    })
+
+    expect(validateWorkflow(workflow)).toEqual({ valid: true, issues: [] })
+  })
+
   it('rejects a workflow without exactly one start node', () => {
     const workflow = createStarterWorkflow()
     workflow.nodes = workflow.nodes.filter((node) => node.type !== 'START')

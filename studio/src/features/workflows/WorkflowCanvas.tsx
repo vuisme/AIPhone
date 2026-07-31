@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -15,15 +15,19 @@ import {
   type NodeChange,
   type ReactFlowInstance,
 } from '@xyflow/react'
-import { Trash2 } from 'lucide-react'
+import { Link2Off } from 'lucide-react'
 import type { NodeType, WorkflowDocument, WorkflowNode } from '../../contracts/workflow'
 import { NODE_CATALOG, nodeDefinition } from './nodeCatalog'
+import { androidUserOptions } from './androidUsers'
 import { WorkflowNodeCard, type WorkflowNodeData } from './WorkflowNodeCard'
+import { removeEdgeById, toggleNodeDisabled } from './workflowGraph'
 
 interface WorkflowCanvasProps {
   workflow: WorkflowDocument
   activeNodeId?: string
   onChange: (workflow: WorkflowDocument) => void
+  onPlayNode: (node: WorkflowNode) => void
+  isNodeTestRunning?: boolean
 }
 
 const nodeTypes = { workflow: WorkflowNodeCard }
@@ -33,7 +37,7 @@ function toFlowNode(node: WorkflowNode, activeNodeId?: string): Node<WorkflowNod
     id: node.id,
     type: 'workflow',
     position: node.position,
-    data: { nodeType: node.type, config: node.config, isActive: node.id === activeNodeId },
+    data: { nodeType: node.type, config: node.config, disabled: node.disabled, isActive: node.id === activeNodeId },
   }
 }
 
@@ -43,37 +47,67 @@ function toWorkflowNode(node: Node<WorkflowNodeData>): WorkflowNode {
     type: node.data.nodeType,
     position: node.position,
     config: node.data.config,
+    disabled: node.data.disabled,
   }
 }
 
-export function WorkflowCanvas({ workflow, activeNodeId, onChange }: WorkflowCanvasProps) {
+export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, isNodeTestRunning = false }: WorkflowCanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const lastPublishedWorkflow = useRef<WorkflowDocument | undefined>(undefined)
   const [instance, setInstance] = useState<ReactFlowInstance<Node<WorkflowNodeData>, Edge>>()
   const [nodes, setNodes] = useState<Node<WorkflowNodeData>[]>(() => workflow.nodes.map((node) => toFlowNode(node, activeNodeId)))
   const [edges, setEdges] = useState<Edge[]>(() => workflow.edges)
-  const [selectedId, setSelectedId] = useState<string>()
+  const [selectedNodeId, setSelectedNodeId] = useState<string>()
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string>()
 
-  const selectedNode = nodes.find((node) => node.id === selectedId)
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId)
+  const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId)
   const selectedDefinition = selectedNode ? nodeDefinition(selectedNode.data.nodeType) : undefined
+
+  useEffect(() => {
+    if (workflow === lastPublishedWorkflow.current) return
+    setNodes(workflow.nodes.map((node) => toFlowNode(node, activeNodeId)))
+    setEdges(workflow.edges)
+    setSelectedNodeId((current) => workflow.nodes.some((node) => node.id === current) ? current : undefined)
+    setSelectedEdgeId((current) => workflow.edges.some((edge) => edge.id === current) ? current : undefined)
+  }, [activeNodeId, workflow])
 
   const publish = (nextNodes: Node<WorkflowNodeData>[], nextEdges: Edge[]) => {
     setNodes(nextNodes)
     setEdges(nextEdges)
-    onChange({
+    const nextWorkflow: WorkflowDocument = {
       ...workflow,
       revision: workflow.revision + 1,
       nodes: nextNodes.map(toWorkflowNode),
       edges: nextEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle ?? undefined })),
       updatedAt: new Date().toISOString(),
-    })
+    }
+    lastPublishedWorkflow.current = nextWorkflow
+    onChange(nextWorkflow)
   }
 
   const onNodesChange = (changes: NodeChange<Node<WorkflowNodeData>>[]) => {
-    publish(applyNodeChanges(changes, nodes), edges)
+    for (const change of changes) {
+      if (change.type === 'select' && change.selected) {
+        setSelectedNodeId(change.id)
+        setSelectedEdgeId(undefined)
+      }
+    }
+    const nextNodes = applyNodeChanges(changes, nodes)
+    if (changes.every((change) => change.type === 'select' || change.type === 'dimensions')) setNodes(nextNodes)
+    else publish(nextNodes, edges)
   }
 
   const onEdgesChange = (changes: EdgeChange<Edge>[]) => {
-    publish(nodes, applyEdgeChanges(changes, edges))
+    for (const change of changes) {
+      if (change.type === 'select' && change.selected) {
+        setSelectedEdgeId(change.id)
+        setSelectedNodeId(undefined)
+      }
+    }
+    const nextEdges = applyEdgeChanges(changes, edges)
+    if (changes.every((change) => change.type === 'select')) setEdges(nextEdges)
+    else publish(nodes, nextEdges)
   }
 
   const onConnect = (connection: Connection) => {
@@ -90,7 +124,8 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange }: WorkflowCan
       data: { nodeType: type, config: { ...definition.defaultConfig } },
     }
     publish([...nodes, node], edges)
-    setSelectedId(node.id)
+    setSelectedNodeId(node.id)
+    setSelectedEdgeId(undefined)
   }
 
   const onDrop = (event: React.DragEvent) => {
@@ -102,19 +137,48 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange }: WorkflowCan
 
   const updateConfig = (key: string, value: unknown) => {
     const nextNodes = nodes.map((node) =>
-      node.id === selectedId ? { ...node, data: { ...node.data, config: { ...node.data.config, [key]: value } } } : node,
+      node.id === selectedNodeId ? { ...node, data: { ...node.data, config: { ...node.data.config, [key]: value } } } : node,
     )
     publish(nextNodes, edges)
   }
 
-  const deleteSelected = () => {
-    if (!selectedNode || selectedNode.data.nodeType === 'START') return
+  const deleteNode = (nodeId: string) => {
+    const target = nodes.find((node) => node.id === nodeId)
+    if (!target || target.data.nodeType === 'START') return
     publish(
-      nodes.filter((node) => node.id !== selectedNode.id),
-      edges.filter((edge) => edge.source !== selectedNode.id && edge.target !== selectedNode.id),
+      nodes.filter((node) => node.id !== nodeId),
+      edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
     )
-    setSelectedId(undefined)
+    if (selectedNodeId === nodeId) setSelectedNodeId(undefined)
   }
+
+  const playNode = (nodeId: string) => {
+    const target = nodes.find((node) => node.id === nodeId)
+    if (target) onPlayNode(toWorkflowNode(target))
+  }
+
+  const toggleDisabled = (nodeId: string) => {
+    const toggled = toggleNodeDisabled(nodes.map(toWorkflowNode), nodeId)
+    const disabledById = new Map(toggled.map((node) => [node.id, node.disabled]))
+    publish(nodes.map((node) => ({ ...node, data: { ...node.data, disabled: disabledById.get(node.id) } })), edges)
+  }
+
+  const deleteSelectedEdge = () => {
+    if (!selectedEdgeId) return
+    publish(nodes, removeEdgeById(edges, selectedEdgeId))
+    setSelectedEdgeId(undefined)
+  }
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!selectedEdgeId || !['Backspace', 'Delete'].includes(event.key) || target?.matches('input, textarea, select')) return
+      event.preventDefault()
+      deleteSelectedEdge()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
 
   const categories = useMemo(() => ['Luồng', 'Hình ảnh', 'Ứng dụng'] as const, [])
 
@@ -155,15 +219,39 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange }: WorkflowCan
 
       <div className="flow-stage" ref={wrapperRef} onDrop={onDrop} onDragOver={(event) => event.preventDefault()}>
         <ReactFlow
-          nodes={nodes.map((node) => ({ ...node, data: { ...node.data, isActive: node.id === activeNodeId } }))}
-          edges={edges}
+          nodes={nodes.map((node) => ({
+            ...node,
+            data: {
+              ...node.data,
+              isActive: node.id === activeNodeId,
+              isNodeTestRunning,
+              onPlay: playNode,
+              onDelete: deleteNode,
+              onToggleDisabled: toggleDisabled,
+            },
+          }))}
+          edges={edges.map((edge) => ({ ...edge, selected: edge.id === selectedEdgeId }))}
           nodeTypes={nodeTypes}
           onInit={setInstance}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onNodeClick={(_, node) => setSelectedId(node.id)}
-          onPaneClick={() => setSelectedId(undefined)}
+          onNodeClick={(_, node) => {
+            setSelectedNodeId(node.id)
+            setSelectedEdgeId(undefined)
+          }}
+          onEdgeClick={(_, edge) => {
+            setSelectedEdgeId(edge.id)
+            setSelectedNodeId(undefined)
+          }}
+          onEdgeDoubleClick={(_, edge) => {
+            publish(nodes, removeEdgeById(edges, edge.id))
+            setSelectedEdgeId(undefined)
+          }}
+          onPaneClick={() => {
+            setSelectedNodeId(undefined)
+            setSelectedEdgeId(undefined)
+          }}
           fitView
           minZoom={0.3}
           maxZoom={1.7}
@@ -178,7 +266,17 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange }: WorkflowCan
 
       <aside className="inspector">
         <div className="panel-heading"><span>INSPECTOR</span></div>
-        {!selectedNode || !selectedDefinition ? (
+        {selectedEdge ? (
+          <div className="inspector-form">
+            <div className="inspector-title edge-title">
+              <strong>Liên kết</strong>
+              <code>{selectedEdge.id}</code>
+            </div>
+            <div className="edge-route"><span>{selectedEdge.source}</span><strong>→</strong><span>{selectedEdge.target}</span></div>
+            <button className="danger-button" onClick={deleteSelectedEdge}><Link2Off size={16} /> Xóa liên kết</button>
+            <small className="keyboard-hint">Có thể dùng phím Delete hoặc Backspace.</small>
+          </div>
+        ) : !selectedNode || !selectedDefinition ? (
           <div className="inspector-empty"><span>01</span><p>Chọn một node để chỉnh cấu hình.</p></div>
         ) : (
           <div className="inspector-form">
@@ -212,16 +310,18 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange }: WorkflowCan
               <label>Package<input value={String(selectedNode.data.config.packageName)} onChange={(event) => updateConfig('packageName', event.target.value)} /></label>
             )}
             {'userId' in selectedNode.data.config && (
-              <label>Android user<input type="number" value={Number(selectedNode.data.config.userId)} onChange={(event) => updateConfig('userId', Number(event.target.value))} /></label>
+              <label>Chạy trên
+                <select value={Number(selectedNode.data.config.userId)} onChange={(event) => updateConfig('userId', Number(event.target.value))}>
+                  {androidUserOptions(selectedNode.data.nodeType).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
             )}
             {'message' in selectedNode.data.config && (
               <label>Thông báo<input value={String(selectedNode.data.config.message)} onChange={(event) => updateConfig('message', event.target.value)} /></label>
             )}
-            <button className="danger-button" onClick={deleteSelected} disabled={selectedNode.data.nodeType === 'START'}><Trash2 size={16} /> Xóa node</button>
           </div>
         )}
       </aside>
     </div>
   )
 }
-

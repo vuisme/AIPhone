@@ -45,7 +45,8 @@
           "enum": ["START", "DELAY", "WAIT_IMAGE", "IF_IMAGE", "TAP_IMAGE", "TAP_POINT", "SWIPE", "LAUNCH_APP", "FORCE_STOP_APP", "CREATE_CLONE", "DELETE_CLONE", "CLEAR_CLONE", "LOOP", "SUCCESS", "FAILURE"]
         },
         "position": { "$ref": "#/$defs/position" },
-        "config": { "type": "object" }
+        "config": { "type": "object" },
+        "disabled": { "type": "boolean", "default": false }
       }
     },
     "edge": {
@@ -75,4 +76,3 @@
     }
   }
 }
-

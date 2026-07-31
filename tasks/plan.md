@@ -12,6 +12,9 @@ Build a public GitHub repository containing a browser-based no-code Studio and a
 - Use polling for run status in the MVP; execution stays on the phone after disconnect.
 - Store the signing keystore only in GitHub Secrets and derive `versionCode` from the Actions run number.
 - Restrict root commands to typed operations and the configured package/user pair.
+- Run Studio independently on the PC through a loopback-only Node.js host.
+- Select Android targets from ADB serials and proxy through per-device forwards; defer LAN discovery.
+- Keep numeric `userId` in the contract while presenting `App chính` and `App kép / XSpace` in Studio.
 
 ## Dependency Graph
 
@@ -61,6 +64,17 @@ Checkpoint: Android unit tests and remote debug APK build pass.
 
 Checkpoint: GitHub Actions is green and a signed APK is available locally and as an artifact.
 
+### Phase 5: Standalone USB Studio
+
+- Task 12: Add explicit workflow edge selection and deletion.
+- Task 13: Add a loopback-only PC Studio Host that lists ADB devices and proxies by serial.
+- Task 14: Add Android single-node test execution and API contract.
+- Task 15: Add Studio device selection and per-device pairing.
+- Task 16: Add `Play node` controls and friendly main/clone user selection.
+- Task 17: Package, verify and publish the upgraded APK and PC Studio artifact.
+
+Checkpoint: Studio at `127.0.0.1:4173` selects the connected phone, edits workflows, deletes edges and tests one node without running the full graph.
+
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
@@ -71,6 +85,8 @@ Checkpoint: GitHub Actions is green and a signed APK is available locally and as
 | Template matching is too slow | Medium | Search normalized ROIs and downsample only for detection, tap using original coordinates |
 | Browser crop coordinate drift | Medium | Test CSS-to-native coordinate conversion as pure logic |
 | APK cannot upgrade | High | Stable application ID, persistent keystore secrets, monotonically increasing version code |
+| Browser can target arbitrary local services | High | PC bridge accepts only ADB serials returned by `adb devices` and fixed remote port `8765` |
+| Single-node test triggers destructive clone actions | High | Require an explicit confirmation in Studio before testing create/delete/clear/force-stop nodes |
 
 ## Verification
 

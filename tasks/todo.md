@@ -54,3 +54,33 @@
   - Acceptance: public `AIPhone` repo is pushed and APK is downloaded to `artifacts/`
   - Verify: clean git status and green GitHub Actions run
   - Files: docs, changelog, release metadata
+
+- [ ] Task 12: Add explicit edge deletion
+  - Acceptance: selecting an edge shows `Xóa liên kết`; only the selected edge is removed
+  - Verify: graph helper/component tests and Studio build pass
+  - Files: workflow canvas, graph helper, tests, styles
+
+- [ ] Task 13: Add standalone PC Studio Host for USB devices
+  - Acceptance: host serves Studio on loopback, lists `adb devices -l` and proxies only through validated serials
+  - Verify: Node tests cover ADB parsing, serial validation and proxy path restrictions
+  - Files: `desktop-host/`
+
+- [ ] Task 14: Add single-node test execution on Android
+  - Acceptance: API starts exactly one saved node and reports through the existing run status without following edges
+  - Verify: executor unit/CI tests and device integration test pass
+  - Files: Android executor, server and tests
+
+- [ ] Task 15: Add USB device selection to Studio
+  - Acceptance: Studio scans USB devices, selects a serial and pairs independently per browser session
+  - Verify: API client and connection-dialog tests pass
+  - Files: Studio bridge client, connection UI and App integration
+
+- [ ] Task 16: Add node play and friendly Android user selector
+  - Acceptance: inspector tests a selected node; user field offers `App chính` or `App kép / XSpace`
+  - Verify: UI tests cover safe/destructive nodes and numeric contract mapping
+  - Files: workflow inspector, App actions and styles
+
+- [ ] Task 17: Package and publish the USB Studio release
+  - Acceptance: CI uploads signed APK plus standalone PC Studio artifact
+  - Verify: green CI, real-device USB selection, node test and upgrade install
+  - Files: workflow, README, changelog and release metadata

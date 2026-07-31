@@ -29,7 +29,7 @@ Xây dựng một hệ thống no-code cho phép người dùng:
 - Không hook, inject, né anti-cheat hoặc reverse-engineer bộ nhớ game.
 - Không yêu cầu UI hierarchy bên trong `unitySurfaceView`.
 - Không phụ thuộc máy tính để xử lý ảnh hoặc quyết định bước tiếp theo trong lúc workflow chạy.
-- Phiên bản đầu không hỗ trợ quản lý nhiều điện thoại đồng thời.
+- Phiên bản USB hỗ trợ chọn một trong nhiều điện thoại đang hiện trong `adb devices`; mỗi lần chỉ điều khiển một máy đích trong Studio.
 
 ## Target Device
 
@@ -49,9 +49,15 @@ Xây dựng một hệ thống no-code cho phép người dùng:
 ```text
 Desktop Browser
     |
-    | HTTP/SSE through adb forward or authenticated LAN
+    | same-origin HTTP
     v
-Android Agent
+PC Studio Host (127.0.0.1)
+    |-- serves the built Studio
+    |-- enumerates authorized USB devices through adb
+    `-- creates a per-serial adb forward and proxies Agent requests
+         |
+         v
+Android Agent (127.0.0.1:8765 on each phone)
     |-- Embedded Studio static assets
     |-- Workflow and template API
     |-- Workflow validator/executor
@@ -75,6 +81,15 @@ The Android Agent is the source of truth. Studio only edits resources and observ
 - Zod `4.4.3` for boundary validation and shared workflow schemas
 - Canvas-based crop editor that preserves native screenshot pixels
 
+### PC Studio Host
+
+- Node.js standard-library HTTP server bound to `127.0.0.1` only
+- Serves the production Studio independently from the Android APK
+- Enumerates USB devices using `adb devices -l`
+- Creates isolated `adb forward` mappings per selected device serial
+- Proxies only `/api/*` requests to the fixed Agent port `8765`
+- Never accepts arbitrary target URLs, hosts, ports or shell arguments from the browser
+
 The listed web versions are locked in `studio/package-lock.json`.
 
 ### Android Agent
@@ -96,20 +111,19 @@ Android Gradle Plugin, Kotlin, OpenCV, ML Kit and embedded-server versions must 
 
 ### USB, default
 
-The Agent binds to device loopback only. The PC exposes it with:
+The Agent binds to device loopback only. The standalone PC Studio Host discovers connected devices and manages forwarding automatically. Manual forwarding remains available for diagnostics:
 
 ```powershell
 .\adb-tool\adb.exe forward tcp:8765 tcp:8765
 ```
 
-Studio is then available at `http://127.0.0.1:8765`.
+Standalone Studio is available at `http://127.0.0.1:4173`. The device picker shows serial, model and connection state from ADB. Pairing tokens remain scoped to the selected device and current browser session.
 
-### LAN, optional
+### LAN, future
 
-- Disabled by default.
-- Requires a short-lived pairing token shown in the Android app.
-- Requests that can execute root actions require an authenticated session.
-- The Agent must never expose an unauthenticated root-command endpoint.
+- Not implemented in the current release.
+- A future LAN mode may use authenticated discovery, but must remain opt-in.
+- The current Agent must continue binding to loopback so USB mode does not expand its network attack surface.
 
 ## Workflow Contract
 
@@ -281,6 +295,7 @@ Initial resources:
 - `PATCH /api/workflows/:id` - update with revision conflict checking.
 - `POST /api/workflows/:id/validate` - validate without running.
 - `POST /api/runs` - start an immutable workflow revision.
+- `POST /api/node-tests` - start execution of exactly one saved workflow node without following graph edges.
 - `GET /api/runs/:id` - current/final state.
 - `POST /api/runs/:id/stop` - request stop.
 - `GET /api/runs/:id/events` - SSE log stream.
@@ -302,6 +317,10 @@ studio/                        React no-code editor
   src/features/runs/
   src/lib/api/
   src/**/*.test.ts(x)
+desktop-host/                  Standalone PC Studio server and USB ADB bridge
+  server.mjs
+  adb.mjs
+  test/
 contracts/                     Versioned JSON schemas and generated types
 docs/                          Product and architecture documentation
 tasks/                         Approved implementation plan and task list
@@ -317,6 +336,10 @@ npm --prefix studio install
 npm --prefix studio run dev
 npm --prefix studio run test
 npm --prefix studio run build
+
+# Standalone PC Studio Host (build Studio first)
+node --test desktop-host/test/*.test.mjs
+node desktop-host/server.mjs
 
 # Android
 .\android-agent\gradlew.bat test
@@ -352,7 +375,9 @@ type NodeResult =
 
 ### Studio tests
 
-- Node creation, connection rules, undo/redo and validation feedback.
+- Node creation, connection rules, explicit edge deletion, undo/redo and validation feedback.
+- USB device selection and per-device pairing state.
+- Single-node play requests and destructive-node confirmation.
 - Native-pixel crop coordinate conversion at multiple browser zoom levels.
 - Template replacement preserves node references.
 - Browser tests at desktop and tablet widths.
@@ -371,6 +396,8 @@ type NodeResult =
 - Root authorization through KernelSU.
 - Create, launch, clear and delete package only in XSpace user `999`.
 - Run continues after Studio disconnects.
+- Standalone Studio lists the connected phone through ADB and controls the selected serial only.
+- `Play node` executes exactly the selected node and does not follow outgoing edges.
 - Result artifacts remain available after reconnect.
 
 ## Boundaries
@@ -410,11 +437,14 @@ type NodeResult =
 8. HyperOS provider creates and removes only the Liên Quân clone in user `999` on the target device.
 9. A configured desired reward causes the run to stop; a non-matching reward follows the loop branch.
 10. Malformed workflows, missing templates, denied root and clone failures produce structured actionable errors.
+11. Studio runs independently at `127.0.0.1:4173`, lists USB-connected phones and routes requests only to the selected serial.
+12. Selecting an edge exposes `Xóa liên kết`; Delete/Backspace removes only that edge.
+13. Selecting a node exposes `Play node`; a test run executes only that node and reports its result.
+14. Nodes that target an Android user show `App chính` or `App kép / XSpace` instead of a raw numeric user field.
 
 ## Open Questions Before Implementation
 
-1. KernelSU currently does not expose `su` to ADB shell. Confirm that an installed Agent APK can be granted root through KernelSU Manager.
-2. Determine whether HyperOS 3 XSpace can be provisioned reliably through Package Manager commands or requires Xiaomi UI/service integration.
-3. Collect representative screenshots for buttons, reward results and failure/pop-up states.
-4. Decide default maximum reroll attempts and storage retention limits.
-5. Pin Android build and vision dependency versions after an API 36 compatibility spike.
+1. Determine whether HyperOS 3 XSpace can be provisioned reliably through Package Manager commands or requires Xiaomi UI/service integration.
+2. Collect representative screenshots for buttons, reward results and failure/pop-up states.
+3. Decide default maximum reroll attempts and storage retention limits.
+4. Define an opt-in authenticated discovery protocol before implementing Wi-Fi/LAN mode.

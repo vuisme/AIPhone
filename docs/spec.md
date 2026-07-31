@@ -160,6 +160,10 @@ type WorkflowNode =
   | LoopNode
   | SuccessNode
   | FailureNode;
+
+interface CommonNodeFields {
+  disabled?: boolean;
+}
 ```
 
 Rules:
@@ -172,6 +176,7 @@ Rules:
 - Every graph path must reach a terminal node or a declared loop.
 - Unbounded loops require an explicit `allowUnlimitedRuns` acknowledgement.
 - Saved documents are validated both in Studio and again by the Agent.
+- Disabled nodes remain in the graph but do not execute. They follow the default outgoing edge, or the first saved outgoing edge when a branch has no default.
 - Schema evolution is additive. Breaking changes require a migration from an older `schemaVersion`.
 
 ## Initial Node Catalogue
@@ -412,7 +417,7 @@ type NodeResult =
 
 ### Ask first
 
-- Any operation affecting user `0`, user `10` or packages other than the configured target.
+- Destructive operations affecting user `0`, user `10` or packages other than the configured target.
 - Enabling LAN access beyond the local network.
 - Adding runtime instrumentation, memory inspection or network interception.
 - Automatically resuming interrupted runs after reboot.
@@ -438,8 +443,8 @@ type NodeResult =
 9. A configured desired reward causes the run to stop; a non-matching reward follows the loop branch.
 10. Malformed workflows, missing templates, denied root and clone failures produce structured actionable errors.
 11. Studio runs independently at `127.0.0.1:4173`, lists USB-connected phones and routes requests only to the selected serial.
-12. Selecting an edge exposes `Xóa liên kết`; Delete/Backspace removes only that edge.
-13. Selecting a node exposes `Play node`; a test run executes only that node and reports its result.
+12. Double-clicking an edge removes only that edge; selecting it also exposes `Xóa liên kết` and Delete/Backspace support.
+13. Every node exposes compact Play, Disable/Enable and Delete actions on the card; Play executes only that node and Disable skips it during full runs.
 14. Nodes that target an Android user show `App chính` or `App kép / XSpace` instead of a raw numeric user field.
 
 ## Open Questions Before Implementation

@@ -7,6 +7,8 @@ AIPhone is a rooted Android visual-automation agent with a browser-based no-code
 - Drag-and-drop workflow nodes with branches and loops.
 - Capture the current Android screen and crop native-pixel PNG templates in the browser.
 - Replace templates without rebuilding the APK.
+- Run Studio independently on the PC and choose a connected USB phone by ADB serial.
+- Play, disable or delete a node directly from its card; double-click an edge to remove it.
 - Execute workflows on the phone after the computer disconnects.
 - Image wait/condition/tap nodes using on-device pixel matching.
 - Typed root operations for Xiaomi HyperOS XSpace user `999`.
@@ -43,22 +45,35 @@ Future versions use the same application ID and GitHub signing key. Install them
 
 Do not uninstall the existing app if its local workflows/templates must be preserved.
 
-## Start Studio
+## Start standalone Studio
 
-1. Open `AIPhone Agent` on Android and grant root in KernelSU Manager.
-2. Copy the 128-bit pairing token shown in the app.
-3. Keep the Agent foreground notification enabled.
-4. Forward the local port:
+Requirements on the PC:
+
+- Node.js 22 or newer.
+- ADB available through `AIPHONE_ADB`, `adb-tool/adb.exe`, or `PATH`.
+
+Build and start from the repository:
 
 ```powershell
-.\adb-tool\adb.exe forward tcp:8765 tcp:8765
+npm --prefix studio ci
+npm --prefix studio run build
+.\desktop-host\start-studio.cmd
 ```
 
-5. Open `http://127.0.0.1:8765` on the computer and enter the pairing token. The browser retains it only for the current session.
+Then:
+
+1. Open `AIPhone Agent` on Android and grant root in KernelSU Manager.
+2. Enable USB debugging and accept the computer's RSA key.
+3. Open `http://127.0.0.1:4173` if it did not open automatically.
+4. Select the phone shown by model and ADB serial.
+5. Enter the pairing token shown in the Android app.
+
+The PC host creates a separate ADB forward for the selected serial. The Agent remains bound to device loopback; Wi-Fi/LAN discovery is intentionally deferred.
 
 ## Repository layout
 
 - `studio/` - React no-code editor and template crop UI.
+- `desktop-host/` - loopback-only Studio server and per-device USB ADB bridge.
 - `android-agent/` - Kotlin Android Agent, local API and workflow executor.
 - `contracts/` - versioned workflow JSON contract and examples.
 - `docs/spec.md` - approved product specification.
@@ -66,7 +81,7 @@ Do not uninstall the existing app if its local workflows/templates must be prese
 
 ## Security boundaries
 
-- The Agent listens on device loopback only; use ADB port forwarding.
+- The Agent listens on device loopback only; the desktop host manages ADB forwarding.
 - Every API request requires the random pairing token shown by the Android app.
 - Studio cannot send arbitrary shell commands.
 - Clone actions are restricted to package `com.garena.game.kgvn` and user `999`.

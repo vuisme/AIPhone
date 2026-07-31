@@ -32,6 +32,10 @@ jobs:
           npm run typecheck
           npm run build
 
+      - name: Test desktop USB bridge
+        working-directory: desktop-host
+        run: npm test
+
       - name: Bundle Studio into Android assets
         run: |
           mkdir -p android-agent/app/src/main/assets/studio
@@ -84,6 +88,16 @@ jobs:
           mkdir -p artifacts
           cp "$APK" "artifacts/AIPhone-v0.1.${GITHUB_RUN_NUMBER}.apk"
 
+      - name: Package standalone Studio
+        run: |
+          PACKAGE="artifacts/AIPhone-Studio-v0.1.${GITHUB_RUN_NUMBER}"
+          mkdir -p "$PACKAGE/desktop-host" "$PACKAGE/studio"
+          cp desktop-host/adb.mjs desktop-host/server.mjs desktop-host/package.json desktop-host/start-studio.cmd "$PACKAGE/desktop-host/"
+          cp -R studio/dist "$PACKAGE/studio/"
+          cp README.md "$PACKAGE/README.md"
+          cd artifacts
+          zip -r "AIPhone-Studio-v0.1.${GITHUB_RUN_NUMBER}.zip" "AIPhone-Studio-v0.1.${GITHUB_RUN_NUMBER}"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -92,3 +106,10 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Upload standalone Studio
+        uses: actions/upload-artifact@v4
+        with:
+          name: AIPhone-Studio-v0.1.${{ github.run_number }}
+          path: artifacts/AIPhone-Studio-v0.1.${{ github.run_number }}.zip
+          if-no-files-found: error
+          retention-days: 30

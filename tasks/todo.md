@@ -95,7 +95,7 @@
   - Verify: Compose config, bridge CORS tests, web build and launcher syntax checks pass
   - Files: Dockerfile, Compose, launchers and bridge mode handling
 
-- [ ] Task 20: Publish and verify the Studio container
+- [x] Task 20: Publish and verify the Studio container
   - Acceptance: GHCR exposes `ghcr.io/vuisme/aiphone-studio:latest` and the launcher pulls it successfully
   - Verify: green container workflow and local health checks on ports `4173` and `4174`
   - Files: container workflow and release metadata

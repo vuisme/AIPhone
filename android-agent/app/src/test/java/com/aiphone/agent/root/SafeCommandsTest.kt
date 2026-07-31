@@ -28,15 +28,37 @@ class SafeCommandsTest {
     }
 
     @Test
-    fun `allows launching the configured package in the main Android user`() {
+    fun `resolves the launcher activity for the configured Android user`() {
         assertEquals(
             listOf(
-                "am", "start", "--user", "0",
+                "cmd", "package", "resolve-activity", "--brief", "--user", "0",
                 "-a", "android.intent.action.MAIN",
                 "-c", "android.intent.category.LAUNCHER",
                 "com.garena.game.kgvn",
             ),
-            SafeCommands.launch("com.garena.game.kgvn", 0),
+            SafeCommands.resolveLauncher("com.garena.game.kgvn", 0),
         )
+    }
+
+    @Test
+    fun `launches only a resolved component inside the configured package`() {
+        assertEquals(
+            listOf(
+                "am", "start", "--user", "999", "-n",
+                "com.garena.game.kgvn/com.garena.game.kgtw.SGameActivity",
+            ),
+            SafeCommands.launchComponent(
+                "com.garena.game.kgvn",
+                999,
+                "com.garena.game.kgvn/com.garena.game.kgtw.SGameActivity",
+            ),
+        )
+    }
+
+    @Test
+    fun `rejects a launcher component from another package`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            SafeCommands.launchComponent("com.garena.game.kgvn", 999, "com.example.other/.MainActivity")
+        }
     }
 }

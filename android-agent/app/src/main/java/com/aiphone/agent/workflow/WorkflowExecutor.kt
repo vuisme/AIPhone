@@ -25,6 +25,7 @@ data class RunSnapshot(
     val startedAt: String? = null,
     val finishedAt: String? = null,
     val iteration: Int = 0,
+    val logs: List<RunLogEntry> = emptyList(),
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -34,6 +35,21 @@ data class RunSnapshot(
         put("startedAt", startedAt ?: JSONObject.NULL)
         put("finishedAt", finishedAt ?: JSONObject.NULL)
         put("iteration", iteration)
+        put("logs", JSONArray(logs.map { it.toJson() }))
+    }
+}
+
+data class RunLogEntry(
+    val timestamp: String,
+    val level: String,
+    val message: String,
+    val nodeId: String? = null,
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("timestamp", timestamp)
+        put("level", level)
+        put("message", message)
+        put("nodeId", nodeId ?: JSONObject.NULL)
     }
 }
 
@@ -60,6 +76,7 @@ class WorkflowExecutor(private val store: AgentStore) {
 
     fun stop(): RunSnapshot {
         cancellation.set(true)
+        appendLog("WARN", "Đã nhận yêu cầu dừng")
         return status.get()
     }
 
@@ -67,10 +84,12 @@ class WorkflowExecutor(private val store: AgentStore) {
 
     private fun beginRun(): RunSnapshot {
         check(status.get().state != RunState.RUNNING) { "A workflow is already running" }
+        val startedAt = Instant.now().toString()
         val initial = RunSnapshot(
             id = UUID.randomUUID().toString(),
             state = RunState.RUNNING,
-            startedAt = Instant.now().toString(),
+            startedAt = startedAt,
+            logs = listOf(RunLogEntry(startedAt, "INFO", "Bắt đầu run")),
         )
         cancellation.set(false)
         status.set(initial)
@@ -100,17 +119,21 @@ class WorkflowExecutor(private val store: AgentStore) {
             while (!cancellation.get()) {
                 check(++steps <= MAX_STEPS) { "Workflow exceeded $MAX_STEPS node executions" }
                 val nodeId = node.getString("id")
+                val nodeType = node.getString("type")
                 val disabled = node.optBoolean("disabled", false)
-                if (!disabled && node.getString("type") == "LOOP") {
+                appendLog("INFO", "Bắt đầu node $nodeType", nodeId)
+                if (!disabled && nodeType == "LOOP") {
                     val maximum = node.optJSONObject("config")?.optInt("maxIterations", 0) ?: 0
                     check(maximum <= 0 || iteration < maximum) { "Loop limit of $maximum iterations reached" }
                 }
                 status.updateAndGet { it.copy(currentNodeId = nodeId, iteration = iteration) }
                 val outcome = (if (disabled) null else executeNode(node, runId)).also {
-                    if (!disabled && node.getString("type") == "LOOP") iteration++
+                    if (!disabled && nodeType == "LOOP") iteration++
                 }
+                if (disabled) appendLog("WARN", "Bỏ qua node đang disable", nodeId)
+                else appendLog("INFO", outcome?.let { "Kết quả: $it" } ?: "Node hoàn tất", nodeId)
 
-                when (node.getString("type").takeUnless { disabled }) {
+                when (nodeType.takeUnless { disabled }) {
                     "SUCCESS" -> return finish(RunState.SUCCESS, node.optJSONObject("config")?.optString("message", "Hoàn tất"))
                     "FAILURE" -> return finish(RunState.FAILED, node.optJSONObject("config")?.optString("message", "Workflow thất bại"))
                 }
@@ -120,6 +143,7 @@ class WorkflowExecutor(private val store: AgentStore) {
             }
             finish(RunState.STOPPED, "Đã dừng theo yêu cầu")
         } catch (error: Throwable) {
+            appendLog("ERROR", error.message ?: error.javaClass.simpleName)
             finish(RunState.FAILED, error.message ?: error.javaClass.simpleName)
         }
     }
@@ -131,13 +155,16 @@ class WorkflowExecutor(private val store: AgentStore) {
             val index = selectSingleNodeIndex(nodes.map { it.getString("id") }, requestedNodeId)
             val node = nodes[index]
             status.updateAndGet { it.copy(currentNodeId = requestedNodeId) }
+            appendLog("INFO", "Chạy thử node ${node.getString("type")}", requestedNodeId)
             val outcome = executeNode(node, runId)
             if (cancellation.get()) return finish(RunState.STOPPED, "Đã dừng chạy thử node")
+            appendLog("INFO", outcome?.let { "Kết quả: $it" } ?: "Node chạy thành công", requestedNodeId)
             when (node.getString("type")) {
                 "FAILURE" -> finish(RunState.FAILED, node.optJSONObject("config")?.optString("message", "Node báo thất bại"))
                 else -> finish(RunState.SUCCESS, outcome?.let { "Kết quả node: $it" } ?: "Node chạy thành công")
             }
         } catch (error: Throwable) {
+            appendLog("ERROR", error.message ?: error.javaClass.simpleName, requestedNodeId)
             finish(RunState.FAILED, error.message ?: error.javaClass.simpleName)
         }
     }
@@ -172,7 +199,7 @@ class WorkflowExecutor(private val store: AgentStore) {
             "DELETE_CLONE" -> executeCommand(SafeCommands.deleteClone(packageName(config), userId(config)))
             "CLEAR_CLONE" -> executeCommand(SafeCommands.clearClone(packageName(config), userId(config)))
             "FORCE_STOP_APP" -> executeCommand(SafeCommands.forceStop(packageName(config), userId(config)))
-            "LAUNCH_APP" -> executeCommand(SafeCommands.launch(packageName(config), userId(config)))
+            "LAUNCH_APP" -> launchApp(config)
             "CAPTURE" -> {
                 File(store.runDirectory, "$runId-${node.getString("id")}.png").writeBytes(RootGateway.captureScreen()); null
             }
@@ -210,8 +237,22 @@ class WorkflowExecutor(private val store: AgentStore) {
 
     private fun executeCommand(args: List<String>): String? {
         val result = RootGateway.executeSafe(args)
+        if (result.text.isNotBlank()) appendLog(if (result.isSuccess) "INFO" else "ERROR", result.text)
         requireSuccess(result.isSuccess, result.text.ifBlank { "Root command failed" })
         return null
+    }
+
+    private fun launchApp(config: JSONObject): String? {
+        val packageName = packageName(config)
+        val userId = userId(config)
+        val resolved = RootGateway.executeSafe(SafeCommands.resolveLauncher(packageName, userId))
+        if (resolved.text.isNotBlank()) appendLog(if (resolved.isSuccess) "INFO" else "ERROR", resolved.text)
+        requireSuccess(resolved.isSuccess, resolved.text.ifBlank { "Cannot resolve launcher activity" })
+        val component = resolved.text.lineSequence()
+            .map { it.trim() }
+            .lastOrNull { it.startsWith("$packageName/") }
+            ?: error("Cannot resolve launcher activity for $packageName in Android user $userId")
+        return executeCommand(SafeCommands.launchComponent(packageName, userId, component))
     }
 
     private fun packageName(config: JSONObject) = config.optString("packageName", SafeCommands.TARGET_PACKAGE)
@@ -231,14 +272,27 @@ class WorkflowExecutor(private val store: AgentStore) {
     }
 
     private fun finish(state: RunState, message: String?) {
+        appendLog(if (state == RunState.FAILED) "ERROR" else "INFO", message ?: state.name)
         status.updateAndGet {
             it.copy(state = state, currentNodeId = null, message = message, finishedAt = Instant.now().toString())
         }
+    }
+
+    private fun appendLog(level: String, message: String, nodeId: String? = status.get().currentNodeId) {
+        val entry = RunLogEntry(
+            timestamp = Instant.now().toString(),
+            level = level,
+            message = message.take(MAX_LOG_MESSAGE_LENGTH),
+            nodeId = nodeId,
+        )
+        status.updateAndGet { it.copy(logs = (it.logs + entry).takeLast(MAX_LOG_ENTRIES)) }
     }
 
     private fun JSONArray.asObjects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
 
     companion object {
         private const val MAX_STEPS = 100_000
+        private const val MAX_LOG_ENTRIES = 200
+        private const val MAX_LOG_MESSAGE_LENGTH = 2_000
     }
 }

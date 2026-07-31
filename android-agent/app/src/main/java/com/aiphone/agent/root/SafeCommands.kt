@@ -25,14 +25,21 @@ object SafeCommands {
         return listOf("am", "force-stop", "--user", userId.toString(), packageName)
     }
 
-    fun launch(packageName: String, userId: Int): List<String> {
+    fun resolveLauncher(packageName: String, userId: Int): List<String> {
         validateAppTarget(packageName, userId)
         return listOf(
-            "am", "start", "--user", userId.toString(),
+            "cmd", "package", "resolve-activity", "--brief", "--user", userId.toString(),
             "-a", "android.intent.action.MAIN",
             "-c", "android.intent.category.LAUNCHER",
             packageName,
         )
+    }
+
+    fun launchComponent(packageName: String, userId: Int, componentName: String): List<String> {
+        validateAppTarget(packageName, userId)
+        require(componentName.startsWith("$packageName/")) { "Launcher component is outside the allowlisted package" }
+        require(COMPONENT_PATTERN.matches(componentName)) { "Launcher component is invalid" }
+        return listOf("am", "start", "--user", userId.toString(), "-n", componentName)
     }
 
     private fun validateClone(packageName: String, userId: Int) {
@@ -48,4 +55,6 @@ object SafeCommands {
     private fun validatePackage(packageName: String) {
         require(packageName == TARGET_PACKAGE) { "Package is not allowlisted" }
     }
+
+    private val COMPONENT_PATTERN = Regex("[a-zA-Z0-9._]+/[a-zA-Z0-9._]+")
 }

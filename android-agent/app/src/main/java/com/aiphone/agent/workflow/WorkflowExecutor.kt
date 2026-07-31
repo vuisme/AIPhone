@@ -43,16 +43,18 @@ class WorkflowExecutor(private val store: AgentStore) {
 
     @Synchronized
     fun start(workflowId: String): RunSnapshot {
-        require(workflowId == "default-workflow" || workflowId == "lien-quan-reroll") { "Unknown workflow" }
-        check(status.get().state != RunState.RUNNING) { "A workflow is already running" }
-        val initial = RunSnapshot(
-            id = UUID.randomUUID().toString(),
-            state = RunState.RUNNING,
-            startedAt = Instant.now().toString(),
-        )
-        cancellation.set(false)
-        status.set(initial)
+        validateWorkflowId(workflowId)
+        val initial = beginRun()
         thread(name = "AIPhone-Workflow", isDaemon = true) { execute(initial.id) }
+        return initial
+    }
+
+    @Synchronized
+    fun startNodeTest(workflowId: String, nodeId: String): RunSnapshot {
+        validateWorkflowId(workflowId)
+        require(nodeId.isNotBlank()) { "Node id is required" }
+        val initial = beginRun()
+        thread(name = "AIPhone-Node-Test", isDaemon = true) { executeSingleNode(initial.id, nodeId) }
         return initial
     }
 
@@ -63,11 +65,33 @@ class WorkflowExecutor(private val store: AgentStore) {
 
     fun snapshot(): RunSnapshot = status.get()
 
+    private fun beginRun(): RunSnapshot {
+        check(status.get().state != RunState.RUNNING) { "A workflow is already running" }
+        val initial = RunSnapshot(
+            id = UUID.randomUUID().toString(),
+            state = RunState.RUNNING,
+            startedAt = Instant.now().toString(),
+        )
+        cancellation.set(false)
+        status.set(initial)
+        return initial
+    }
+
+    private fun validateWorkflowId(workflowId: String) {
+        require(workflowId == "default-workflow" || workflowId == "lien-quan-reroll") { "Unknown workflow" }
+    }
+
     private fun execute(runId: String) {
         try {
             val document = JSONObject(store.readWorkflow())
             val nodes = document.getJSONArray("nodes").asObjects().associateBy { it.getString("id") }
-            val edges = document.getJSONArray("edges").asObjects()
+            val edges = document.getJSONArray("edges").asObjects().map {
+                WorkflowEdgeRoute(
+                    source = it.getString("source"),
+                    target = it.getString("target"),
+                    sourceHandle = it.optString("sourceHandle").ifBlank { null },
+                )
+            }
             var node = nodes.values.singleOrNull { it.getString("type") == "START" }
                 ?: error("Workflow must contain exactly one START node")
             var iteration = 0
@@ -76,28 +100,43 @@ class WorkflowExecutor(private val store: AgentStore) {
             while (!cancellation.get()) {
                 check(++steps <= MAX_STEPS) { "Workflow exceeded $MAX_STEPS node executions" }
                 val nodeId = node.getString("id")
-                if (node.getString("type") == "LOOP") {
+                val disabled = node.optBoolean("disabled", false)
+                if (!disabled && node.getString("type") == "LOOP") {
                     val maximum = node.optJSONObject("config")?.optInt("maxIterations", 0) ?: 0
                     check(maximum <= 0 || iteration < maximum) { "Loop limit of $maximum iterations reached" }
                 }
                 status.updateAndGet { it.copy(currentNodeId = nodeId, iteration = iteration) }
-                val outcome = executeNode(node, runId).also {
-                    if (node.getString("type") == "LOOP") iteration++
+                val outcome = (if (disabled) null else executeNode(node, runId)).also {
+                    if (!disabled && node.getString("type") == "LOOP") iteration++
                 }
 
-                when (node.getString("type")) {
+                when (node.getString("type").takeUnless { disabled }) {
                     "SUCCESS" -> return finish(RunState.SUCCESS, node.optJSONObject("config")?.optString("message", "Hoàn tất"))
                     "FAILURE" -> return finish(RunState.FAILED, node.optJSONObject("config")?.optString("message", "Workflow thất bại"))
                 }
 
-                val nextEdge = edges.firstOrNull {
-                    it.getString("source") == nodeId && outcome != null && it.optString("sourceHandle") == outcome
-                } ?: edges.firstOrNull {
-                    it.getString("source") == nodeId && it.optString("sourceHandle").isBlank()
-                } ?: error("Node $nodeId has no edge for outcome ${outcome ?: "DEFAULT"}")
-                node = nodes[nextEdge.getString("target")] ?: error("Missing target node")
+                val nextEdge = selectNextRoute(edges, nodeId, outcome, disabled)
+                node = nodes[nextEdge.target] ?: error("Missing target node")
             }
             finish(RunState.STOPPED, "Đã dừng theo yêu cầu")
+        } catch (error: Throwable) {
+            finish(RunState.FAILED, error.message ?: error.javaClass.simpleName)
+        }
+    }
+
+    private fun executeSingleNode(runId: String, requestedNodeId: String) {
+        try {
+            val document = JSONObject(store.readWorkflow())
+            val nodes = document.getJSONArray("nodes").asObjects()
+            val index = selectSingleNodeIndex(nodes.map { it.getString("id") }, requestedNodeId)
+            val node = nodes[index]
+            status.updateAndGet { it.copy(currentNodeId = requestedNodeId) }
+            val outcome = executeNode(node, runId)
+            if (cancellation.get()) return finish(RunState.STOPPED, "Đã dừng chạy thử node")
+            when (node.getString("type")) {
+                "FAILURE" -> finish(RunState.FAILED, node.optJSONObject("config")?.optString("message", "Node báo thất bại"))
+                else -> finish(RunState.SUCCESS, outcome?.let { "Kết quả node: $it" } ?: "Node chạy thành công")
+            }
         } catch (error: Throwable) {
             finish(RunState.FAILED, error.message ?: error.javaClass.simpleName)
         }

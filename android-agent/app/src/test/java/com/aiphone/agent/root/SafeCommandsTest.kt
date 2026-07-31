@@ -26,5 +26,17 @@ class SafeCommandsTest {
             SafeCommands.clearClone("com.example.other", 999)
         }
     }
-}
 
+    @Test
+    fun `allows launching the configured package in the main Android user`() {
+        assertEquals(
+            listOf(
+                "am", "start", "--user", "0",
+                "-a", "android.intent.action.MAIN",
+                "-c", "android.intent.category.LAUNCHER",
+                "com.garena.game.kgvn",
+            ),
+            SafeCommands.launch("com.garena.game.kgvn", 0),
+        )
+    }
+}

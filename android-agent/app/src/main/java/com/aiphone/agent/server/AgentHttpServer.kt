@@ -105,6 +105,12 @@ class AgentHttpServer(
                     val workflowId = JSONObject(request.body.toString(Charsets.UTF_8)).optString("workflowId", "default-workflow")
                     HttpResponse.json(body = executor.start(workflowId).toJson())
                 }
+                request.method == "POST" && request.path == "/api/node-tests" -> {
+                    val body = JSONObject(request.body.toString(Charsets.UTF_8))
+                    val workflowId = body.optString("workflowId", "default-workflow")
+                    val nodeId = body.getString("nodeId")
+                    HttpResponse.json(body = executor.startNodeTest(workflowId, nodeId).toJson())
+                }
                 request.method == "GET" && request.path == "/api/runs/current" -> HttpResponse.json(body = executor.snapshot().toJson())
                 request.method == "POST" && request.path == "/api/runs/current/stop" -> HttpResponse.json(body = executor.stop().toJson())
                 request.method == "GET" && request.path.startsWith("/api/") -> HttpResponse.json(404, errorJson("NOT_FOUND", "Unknown API resource"))

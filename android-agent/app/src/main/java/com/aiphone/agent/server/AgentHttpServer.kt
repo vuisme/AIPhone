@@ -94,6 +94,7 @@ class AgentHttpServer(
             }
             val workflowPath = WORKFLOW_PATH.matchEntire(request.path)
             val assetPath = WORKFLOW_ASSET_PATH.matchEntire(request.path)
+            val inventoryPath = WORKFLOW_INVENTORY_PATH.matchEntire(request.path)
             when {
                 request.method == "GET" && request.path == "/api/device" -> deviceHealth()
                 request.method == "POST" && request.path == "/api/screenshots" -> HttpResponse(200, "image/png", RootGateway.captureScreen())
@@ -102,6 +103,7 @@ class AgentHttpServer(
                 request.method == "POST" && request.path == "/api/workflows" -> HttpResponse(200, "application/json; charset=utf-8", store.createWorkflow(request.body).toByteArray())
                 request.method == "GET" && request.path == "/api/workflows/default" -> HttpResponse(200, "application/json; charset=utf-8", store.readWorkflow().toByteArray())
                 request.method == "PUT" && request.path == "/api/workflows/default" -> HttpResponse(200, "application/json; charset=utf-8", store.saveWorkflow(AgentStore.DEFAULT_WORKFLOW_ID, request.body).toByteArray())
+                inventoryPath != null && request.method == "GET" -> HttpResponse.json(body = store.workflowInventory(inventoryPath.groupValues[1]))
                 assetPath != null && request.method == "PUT" -> {
                     val workflowId = assetPath.groupValues[1]
                     val pathId = assetPath.groupValues[2]
@@ -261,6 +263,7 @@ class AgentHttpServer(
     companion object {
         private val WORKFLOW_PATH = Regex("^/api/workflows/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})$")
         private val WORKFLOW_ASSET_PATH = Regex("^/api/workflows/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})/assets/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})$")
+        private val WORKFLOW_INVENTORY_PATH = Regex("^/api/workflows/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})/inventory$")
         private const val PORT = 8765
         private const val MAX_BODY_BYTES = 16 * 1024 * 1024
         private const val MAX_HEADER_LINE = 16 * 1024

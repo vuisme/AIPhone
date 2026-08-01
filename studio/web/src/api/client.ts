@@ -36,19 +36,24 @@ export function isStandaloneStudio(): boolean {
   return BRIDGE_ORIGIN.length > 0 || window.location.port === '4173'
 }
 
-export function setAgentToken(value: string) {
+export function setAgentToken(value: string, serial = selectedSerial) {
   pairingToken = value.replace(/\s/g, '')
-  sessionStorage.setItem(tokenKey(), pairingToken)
+  sessionStorage.setItem(tokenKey(serial), pairingToken)
 }
 
-export function hasAgentToken(): boolean {
-  return pairingToken.length > 0
+export function hasAgentToken(serial = selectedSerial): boolean {
+  return (sessionStorage.getItem(tokenKey(serial)) ?? (serial === selectedSerial ? pairingToken : '')).length > 0
 }
 
-function agentFetch(path: string, init: RequestInit = {}) {
+function agentFetch(path: string, init: RequestInit = {}, serial = selectedSerial) {
   const headers = new Headers(init.headers)
-  if (pairingToken) headers.set('X-AIPhone-Token', pairingToken)
-  return fetch(buildAgentPath(path), { ...init, headers })
+  const token = sessionStorage.getItem(tokenKey(serial)) ?? (serial === selectedSerial ? pairingToken : '')
+  if (token) headers.set('X-AIPhone-Token', token)
+  return fetch(buildAgentPath(path, serial), { ...init, headers })
+}
+
+function projectFetch(path: string, init: RequestInit = {}) {
+  return fetch(`${BRIDGE_ORIGIN}${path}`, init)
 }
 
 export interface AdbDevice {
@@ -116,11 +121,63 @@ export interface UiHierarchySnapshot {
   surfaceOnly: boolean
 }
 
+export interface WorkflowInventory {
+  workflowId: string
+  exists: boolean
+  revision: number
+  assets: Array<{ id: string; sha256: string }>
+}
+
 export const bridgeApi = {
   async getDevices(): Promise<AdbDevice[]> {
     const response = await fetch(`${BRIDGE_ORIGIN}/bridge/devices`, { cache: 'no-store' })
     const result = await parseJson<{ devices: AdbDevice[] }>(response)
     return result.devices
+  },
+}
+
+export const projectApi = {
+  async getWorkflows(): Promise<WorkflowSummary[]> {
+    const result = await parseJson<{ workflows: WorkflowSummary[] }>(await projectFetch('/studio/workflows'))
+    return result.workflows
+  },
+
+  async getWorkflow(workflowId: string): Promise<WorkflowDocument> {
+    return parseJson(await projectFetch(`/studio/workflows/${encodeURIComponent(workflowId)}`))
+  },
+
+  async createWorkflow(workflow: WorkflowDocument): Promise<WorkflowDocument> {
+    return parseJson(await projectFetch('/studio/workflows', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(workflow),
+    }))
+  },
+
+  async saveWorkflow(workflow: WorkflowDocument): Promise<WorkflowDocument> {
+    return parseJson(await projectFetch(`/studio/workflows/${encodeURIComponent(workflow.id)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(workflow),
+    }))
+  },
+
+  async deleteWorkflow(workflowId: string): Promise<void> {
+    const response = await projectFetch(`/studio/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' })
+    if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
+  },
+
+  async uploadAsset(upload: AssetUpload): Promise<ImageAssetRecord> {
+    return parseJson(await projectFetch(`/studio/workflows/${encodeURIComponent(upload.record.workflowId)}/assets/${encodeURIComponent(upload.record.id)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(upload),
+    }))
+  },
+
+  async getAssetImage(workflowId: string, assetId: string): Promise<Blob> {
+    const response = await projectFetch(`/studio/workflows/${encodeURIComponent(workflowId)}/assets/${encodeURIComponent(assetId)}`)
+    if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
+    return response.blob()
+  },
+
+  async deleteAssetFile(workflowId: string, assetId: string): Promise<void> {
+    const response = await projectFetch(`/studio/workflows/${encodeURIComponent(workflowId)}/assets/${encodeURIComponent(assetId)}`, { method: 'DELETE' })
+    if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
   },
 }
 
@@ -139,8 +196,8 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 export const agentApi = {
-  async getDevice(): Promise<DeviceHealth> {
-    return parseJson(await agentFetch('/api/device'))
+  async getDevice(serial = selectedSerial): Promise<DeviceHealth> {
+    return parseJson(await agentFetch('/api/device', {}, serial))
   },
 
   async captureScreenshot(): Promise<Blob> {
@@ -152,13 +209,13 @@ export const agentApi = {
     return response.blob()
   },
 
-  async getWorkflows(): Promise<WorkflowSummary[]> {
-    const result = await parseJson<{ workflows: WorkflowSummary[] }>(await agentFetch('/api/workflows'))
+  async getWorkflows(serial = selectedSerial): Promise<WorkflowSummary[]> {
+    const result = await parseJson<{ workflows: WorkflowSummary[] }>(await agentFetch('/api/workflows', {}, serial))
     return result.workflows
   },
 
-  async getWorkflow(workflowId: string): Promise<WorkflowDocument> {
-    return parseJson(await agentFetch(`/api/workflows/${encodeURIComponent(workflowId)}`))
+  async getWorkflow(workflowId: string, serial = selectedSerial): Promise<WorkflowDocument> {
+    return parseJson(await agentFetch(`/api/workflows/${encodeURIComponent(workflowId)}`, {}, serial))
   },
 
   async createWorkflow(workflow: WorkflowDocument): Promise<WorkflowDocument> {
@@ -169,13 +226,13 @@ export const agentApi = {
     }))
   },
 
-  async saveWorkflow(workflow: WorkflowDocument): Promise<WorkflowDocument> {
+  async saveWorkflow(workflow: WorkflowDocument, serial = selectedSerial): Promise<WorkflowDocument> {
     return parseJson(
       await agentFetch(`/api/workflows/${encodeURIComponent(workflow.id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(workflow),
-      }),
+      }, serial),
     )
   },
 
@@ -184,13 +241,13 @@ export const agentApi = {
     if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
   },
 
-  async uploadAsset(upload: AssetUpload): Promise<ImageAssetRecord> {
+  async uploadAsset(upload: AssetUpload, serial = selectedSerial): Promise<ImageAssetRecord> {
     return parseJson(
       await agentFetch(`/api/workflows/${encodeURIComponent(upload.record.workflowId)}/assets/${encodeURIComponent(upload.record.id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(upload),
-      }),
+      }, serial),
     )
   },
 
@@ -199,8 +256,8 @@ export const agentApi = {
     if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
   },
 
-  async getAssetImage(workflowId: string, assetId: string): Promise<Blob> {
-    const response = await agentFetch(`/api/workflows/${encodeURIComponent(workflowId)}/assets/${encodeURIComponent(assetId)}`)
+  async getAssetImage(workflowId: string, assetId: string, serial = selectedSerial): Promise<Blob> {
+    const response = await agentFetch(`/api/workflows/${encodeURIComponent(workflowId)}/assets/${encodeURIComponent(assetId)}`, {}, serial)
     if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
     return response.blob()
   },
@@ -209,13 +266,17 @@ export const agentApi = {
     return parseJson(await agentFetch('/api/ui-hierarchy', { method: 'POST' }))
   },
 
-  async startRun(workflowId: string): Promise<RunStatus> {
+  async getWorkflowInventory(workflowId: string, serial = selectedSerial): Promise<WorkflowInventory> {
+    return parseJson(await agentFetch(`/api/workflows/${encodeURIComponent(workflowId)}/inventory`, {}, serial))
+  },
+
+  async startRun(workflowId: string, serial = selectedSerial): Promise<RunStatus> {
     return parseJson(
       await agentFetch('/api/runs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workflowId }),
-      }),
+      }, serial),
     )
   },
 

@@ -100,22 +100,22 @@
   - Verify: green container workflow and local health checks on ports `4173` and `4174`
   - Files: container workflow and release metadata
 
-- [ ] Task 21: Define workflow-scoped Assets and migration
+- [x] Task 21: Define workflow-scoped Assets and migration
   - Acceptance: new JSON uses `assets/assetId`; old `templates/templateId` loads without data loss
   - Verify: contract migration and validation tests pass
   - Files: Studio contract, Android storage contract, spec/ADR
 
-- [ ] Task 22: Add multi-workflow persistence and CRUD
+- [x] Task 22: Add multi-workflow persistence and CRUD
   - Acceptance: users can list, create, rename, select and delete workflows; the selected workflow is executed
   - Verify: API/storage tests and Studio state tests pass
   - Files: Android store/server/executor, Studio API client and workflow manager
 
-- [ ] Task 23: Add accessibility selector execution
+- [x] Task 23: Add accessibility selector execution
   - Acceptance: Agent exposes hierarchy XML/structured nodes and `TAP_TEXT` clicks an accessible node or its bounds
   - Verify: selector matching/unit tests and Android CI pass
   - Files: accessibility service, manifest, executor and tests
 
-- [ ] Task 24: Add Asset Library and Capture Lab inspector
+- [x] Task 24: Add Asset Library and Capture Lab inspector
   - Acceptance: Assets are grouped by workflow; images can be replaced; screenshot UI toggles to visual text inspection
   - Verify: Studio tests, typecheck and build pass
   - Files: Asset components, capture components, App integration and styles
@@ -124,3 +124,43 @@
   - Acceptance: Docker Studio and USB bridge restart cleanly; signed APK is upgradeable
   - Verify: health endpoints, GitHub Actions and `adb install -r`
   - Files: changelog, CI artifacts and runtime deployment
+
+- [ ] Task 26: Define fleet sync and capability contracts
+  - Acceptance: IMAGE Assets carry SHA-256; Agent inventory reports hashes and supported capabilities
+  - Verify: contract and Android unit tests pass
+  - Files: Studio contract, Agent store/server, spec/ADR
+
+- [ ] Task 27: Add the canonical Studio Host project store
+  - Acceptance: workflows and PNG Assets persist on the PC independently of any phone
+  - Verify: host persistence, PNG validation and traversal tests pass
+  - Files: `studio/host/`
+
+- [ ] Task 28: Deploy and run across multiple phones
+  - Acceptance: Studio syncs only changed Assets, then saves and optionally runs the workflow on each selected device
+  - Verify: pure sync planner and API orchestration tests pass
+  - Files: Studio API/client, device selection and fleet progress UI
+
+- [ ] Task 29: Add root-optional execution capabilities
+  - Acceptance: supported accessibility/main-user nodes run without root and root-only nodes fail with explicit errors
+  - Verify: Android capability and executor tests pass
+  - Files: accessibility, root actions, executor and device health
+
+- [ ] Task 30: Add a modern native Agent dashboard
+  - Acceptance: service toggle, pairing, root/accessibility state and capability summary are available in-app
+  - Verify: Android CI build and manual phone review
+  - Files: MainActivity, resources and AutomationService
+
+- [ ] Task 31: Add Stable/Nightly updater
+  - Acceptance: Agent selects the correct fixed-repository release and installs via root or system installer
+  - Verify: release selection unit tests and signed upgrade test
+  - Files: Android update module, FileProvider and app UI
+
+- [ ] Task 32: Publish release channels in CI
+  - Acceptance: main publishes an opt-in Nightly prerelease; version tags publish immutable Stable releases
+  - Verify: GitHub Actions and release asset inspection
+  - Files: `.github/workflows/`
+
+- [ ] Task 33: Deliver and verify fleet-ready builds
+  - Acceptance: Docker/bridge health is green and the signed APK deploys without losing workflows
+  - Verify: local health checks, Android CI and `adb install -r`
+  - Files: changelog, docs and release artifacts

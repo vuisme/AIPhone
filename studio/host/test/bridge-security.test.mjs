@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
+import { mkdtemp } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 import { agentPathFromBridgeUrl, bridgeCorsHeaders, createStudioServer } from '../server.mjs'
+import { ProjectStore } from '../project-store.mjs'
 
 async function withServer(options, run) {
   const server = createStudioServer(options)
@@ -25,6 +29,10 @@ test('agentPathFromBridgeUrl allows only fixed device API routes', () => {
   assert.equal(
     agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/ui-hierarchy', 'c421ff5b'),
     '/api/ui-hierarchy',
+  )
+  assert.equal(
+    agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/workflows/reward-flow/inventory', 'c421ff5b'),
+    '/api/workflows/reward-flow/inventory',
   )
 })
 
@@ -74,5 +82,23 @@ test('bridge-only server preserves CORS headers when ADB fails', async () => {
     assert.equal(response.status, 400)
     assert.equal(response.headers.get('access-control-allow-origin'), 'http://127.0.0.1:4173')
     assert.deepEqual(await response.json(), { error: 'ADB unavailable' })
+  })
+})
+
+test('bridge-only server persists canonical Studio workflows with local CORS', async () => {
+  const bridge = { listDevices: async () => [] }
+  const projectStore = new ProjectStore(await mkdtemp(path.join(os.tmpdir(), 'aiphone-http-store-')))
+  const workflow = { schemaVersion: 2, id: 'fleet', name: 'Fleet', revision: 1, nodes: [], edges: [], assets: [], createdAt: '', updatedAt: '' }
+  await withServer({ bridge, bridgeOnly: true, projectStore }, async (origin) => {
+    const created = await fetch(`${origin}/studio/workflows`, {
+      method: 'POST',
+      headers: { Origin: 'http://127.0.0.1:4173', 'Content-Type': 'application/json' },
+      body: JSON.stringify(workflow),
+    })
+    assert.equal(created.status, 201)
+    assert.equal(created.headers.get('access-control-allow-origin'), 'http://127.0.0.1:4173')
+
+    const listed = await fetch(`${origin}/studio/workflows`, { headers: { Origin: 'http://127.0.0.1:4173' } })
+    assert.deepEqual(await listed.json(), { workflows: [{ id: 'fleet', name: 'Fleet', revision: 1, nodeCount: 0, assetCount: 0, updatedAt: '' }] })
   })
 })

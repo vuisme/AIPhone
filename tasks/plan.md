@@ -94,6 +94,19 @@ Checkpoint: `studio/start-docker.cmd` starts the published UI container and loca
 
 Checkpoint: Studio manages multiple workflows and their Assets, can create text-click nodes from a live hierarchy, and runs through the selected phone/workflow.
 
+### Phase 8: Fleet Deployment and Root-Optional Agent
+
+- Task 26: Define Asset hashes, deployment inventory and device capability contracts.
+- Task 27: Add a persistent canonical workflow/Asset store to the Windows Studio Host.
+- Task 28: Add multi-device selection, Asset sync and `Deploy & Run` orchestration.
+- Task 29: Add Android capability checks, Accessibility gesture fallback and main-user non-root launch.
+- Task 30: Replace the minimal Android screen with a modern service/capability dashboard.
+- Task 31: Add Stable/Nightly GitHub release selection and safe APK installation.
+- Task 32: Publish Nightly automatically and Stable from immutable version tags.
+- Task 33: Verify fleet sync, Android CI and local Docker deployment.
+
+Checkpoint: one canonical workflow deploys incrementally to multiple USB phones, runs offline, and the Agent clearly supports both rooted and limited non-root modes.
+
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
@@ -106,6 +119,9 @@ Checkpoint: Studio manages multiple workflows and their Assets, can create text-
 | APK cannot upgrade | High | Stable application ID, persistent keystore secrets, monotonically increasing version code |
 | Browser can target arbitrary local services | High | PC bridge accepts only ADB serials returned by `adb devices` and fixed remote port `8765` |
 | Single-node test triggers destructive clone actions | High | Require an explicit confirmation in Studio before testing create/delete/clear/force-stop nodes |
+| Asset sync activates a workflow before PNG upload completes | High | Upload/hash all images first and save the workflow manifest last |
+| Nightly silently replaces Stable | High | Nightly is explicit opt-in; Stable ignores prereleases and uses immutable tags |
+| Non-root mode appears to support XSpace | High | Publish a capability matrix and fail unsupported nodes before execution |
 
 ## Verification
 

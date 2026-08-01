@@ -79,7 +79,7 @@ class AgentStore(context: Context) {
 
     @Synchronized
     fun saveImageAsset(workflowId: String, body: ByteArray): String {
-        require(hasWorkflow(workflowId)) { "Unknown workflow $workflowId" }
+        validateId(workflowId, "Workflow")
         require(body.size <= MAX_ASSET_UPLOAD_BYTES) { "Asset upload is too large" }
         val upload = JSONObject(body.toString(Charsets.UTF_8))
         val record = upload.getJSONObject("record")
@@ -98,7 +98,32 @@ class AgentStore(context: Context) {
         return record.apply {
             put("type", "IMAGE")
             put("workflowId", workflowId)
+            put("sha256", ContentHash.sha256(decoded))
         }.toString()
+    }
+
+    @Synchronized
+    fun workflowInventory(workflowId: String): JSONObject {
+        validateId(workflowId, "Workflow")
+        val file = workflowFile(workflowId)
+        if (!file.isFile) {
+            return JSONObject().put("workflowId", workflowId).put("exists", false).put("revision", 0).put("assets", JSONArray())
+        }
+        val workflow = normalizeWorkflow(JSONObject(file.readText()), workflowId)
+        val inventory = JSONArray()
+        val assets = workflow.getJSONArray("assets")
+        for (index in 0 until assets.length()) {
+            val asset = assets.getJSONObject(index)
+            if (asset.optString("type", "IMAGE") != "IMAGE") continue
+            val assetId = asset.getString("id")
+            val image = assetFile(workflowId, assetId)
+            if (image.isFile) inventory.put(JSONObject().put("id", assetId).put("sha256", ContentHash.sha256(image.readBytes())))
+        }
+        return JSONObject()
+            .put("workflowId", workflowId)
+            .put("exists", true)
+            .put("revision", workflow.optInt("revision", 1))
+            .put("assets", inventory)
     }
 
     @Synchronized

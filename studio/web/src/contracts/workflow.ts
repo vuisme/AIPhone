@@ -53,6 +53,7 @@ interface AssetBase {
 export interface ImageAssetRecord extends AssetBase {
   type: 'IMAGE'
   fileName: string
+  sha256?: string
   threshold: number
   searchRegion?: Region
   width: number
@@ -171,6 +172,7 @@ function migrateAsset(value: unknown, workflowId: string): AssetRecord | undefin
     type: 'IMAGE',
     name,
     fileName: typeof record.fileName === 'string' ? record.fileName : `${id}.png`,
+    sha256: typeof record.sha256 === 'string' ? record.sha256 : undefined,
     threshold: asNumber(record.threshold, 0.88),
     searchRegion: migrateRegion(record.searchRegion),
     width: asNumber(record.width),

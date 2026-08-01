@@ -74,6 +74,9 @@ jobs:
       - name: Verify Android loopback network policy
         run: node android-agent/scripts/verify-network-security.mjs
 
+      - name: Verify Android runtime compatibility
+        run: node android-agent/scripts/verify-runtime-compat.mjs
+
       - name: Bundle Studio into Android assets
         run: |
           mkdir -p android-agent/app/src/main/assets/studio

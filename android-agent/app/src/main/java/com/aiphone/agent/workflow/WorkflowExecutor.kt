@@ -190,8 +190,9 @@ class WorkflowExecutor(
             }
             finish(RunState.STOPPED, "Đã dừng theo yêu cầu")
         } catch (error: Throwable) {
-            appendLog("ERROR", error.message ?: error.javaClass.simpleName)
-            finish(RunState.FAILED, error.message ?: error.javaClass.simpleName)
+            val detail = describeThrowable(error)
+            appendLog("ERROR", detail)
+            finish(RunState.FAILED, detail)
         }
     }
 
@@ -214,8 +215,9 @@ class WorkflowExecutor(
                 else -> finish(RunState.SUCCESS, result.description() ?: "Node chạy thành công")
             }
         } catch (error: Throwable) {
-            appendLog("ERROR", error.message ?: error.javaClass.simpleName, requestedNodeId)
-            finish(RunState.FAILED, error.message ?: error.javaClass.simpleName)
+            val detail = describeThrowable(error)
+            appendLog("ERROR", detail, requestedNodeId)
+            finish(RunState.FAILED, detail)
         }
     }
 

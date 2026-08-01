@@ -69,7 +69,7 @@ class RunContext {
 
     companion object {
         private val VARIABLE_PATTERN = Regex("^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
-        private val VARIABLE_TOKEN = Regex("\\{\\{\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*}}")
+        private val VARIABLE_TOKEN = Regex("\\{\\{\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\}\\}")
 
         fun fromWorkflow(document: JSONObject): RunContext = RunContext().apply {
             val parameters = document.optJSONArray("parameters") ?: JSONArray()

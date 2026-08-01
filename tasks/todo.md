@@ -210,7 +210,7 @@
   - Verify: web tests, typecheck and production build
   - Files: API client, device picker and Live View labels
 
-- [ ] Task 43: Deliver and verify Cloud Callback builds
+- [x] Task 43: Deliver and verify Cloud Callback builds
   - Acceptance: local DB migration is safe, cloud Compose is valid and Nightly APK/Studio artifacts publish
   - Verify: Docker health, CI runs and release inspection
   - Files: Compose, CI, docs and release artifacts

@@ -280,21 +280,21 @@ export const agentApi = {
     )
   },
 
-  async startNodeTest(workflowId: string, nodeId: string): Promise<RunStatus> {
+  async startNodeTest(workflowId: string, nodeId: string, serial = selectedSerial): Promise<RunStatus> {
     return parseJson(
       await agentFetch('/api/node-tests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workflowId, nodeId }),
-      }),
+      }, serial),
     )
   },
 
-  async stopRun(): Promise<RunStatus> {
-    return parseJson(await agentFetch('/api/runs/current/stop', { method: 'POST' }))
+  async stopRun(serial = selectedSerial): Promise<RunStatus> {
+    return parseJson(await agentFetch('/api/runs/current/stop', { method: 'POST' }, serial))
   },
 
-  async getRunStatus(): Promise<RunStatus> {
-    return parseJson(await agentFetch('/api/runs/current'))
+  async getRunStatus(serial = selectedSerial): Promise<RunStatus> {
+    return parseJson(await agentFetch('/api/runs/current', {}, serial))
   },
 }

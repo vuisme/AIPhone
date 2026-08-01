@@ -18,7 +18,7 @@ ENV AIPHONE_STATIC_ONLY=1 \
     NODE_ENV=production
 WORKDIR /app
 
-COPY studio/host/adb.mjs studio/host/server.mjs ./host/
+COPY studio/host/adb.mjs studio/host/project-store.mjs studio/host/server.mjs ./host/
 COPY --from=web-build /build/dist/ ./web/dist/
 
 USER node

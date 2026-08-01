@@ -1,6 +1,5 @@
 import { Image, Pencil, RefreshCw, ScanText, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { agentApi } from '../../api/client'
 import type { AssetRecord, ImageAssetRecord, WorkflowDocument } from '../../contracts/workflow'
 
 interface AssetLibraryProps {
@@ -11,14 +10,15 @@ interface AssetLibraryProps {
   onReplace: (asset: ImageAssetRecord) => void
   onRename: (asset: AssetRecord, name: string) => void
   onDelete: (asset: AssetRecord) => void
+  getAssetImage: (workflowId: string, assetId: string) => Promise<Blob>
 }
 
-function ImagePreview({ asset }: { asset: ImageAssetRecord }) {
+function ImagePreview({ asset, getAssetImage }: { asset: ImageAssetRecord; getAssetImage: AssetLibraryProps['getAssetImage'] }) {
   const [url, setUrl] = useState<string>()
   useEffect(() => {
     let active = true
     let createdUrl: string | undefined
-    agentApi.getAssetImage(asset.workflowId, asset.id).then((blob) => {
+    getAssetImage(asset.workflowId, asset.id).then((blob) => {
       if (!active) return
       createdUrl = URL.createObjectURL(blob)
       setUrl(createdUrl)
@@ -27,16 +27,16 @@ function ImagePreview({ asset }: { asset: ImageAssetRecord }) {
       active = false
       if (createdUrl) URL.revokeObjectURL(createdUrl)
     }
-  }, [asset.id, asset.updatedAt, asset.workflowId])
+  }, [asset.id, asset.updatedAt, asset.workflowId, getAssetImage])
   return url ? <img src={url} alt="" /> : <Image size={24} />
 }
 
-function AssetCard({ asset, onReplace, onRename, onDelete }: Pick<AssetLibraryProps, 'onReplace' | 'onRename' | 'onDelete'> & { asset: AssetRecord }) {
+function AssetCard({ asset, onReplace, onRename, onDelete, getAssetImage }: Pick<AssetLibraryProps, 'onReplace' | 'onRename' | 'onDelete' | 'getAssetImage'> & { asset: AssetRecord }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(asset.name)
   return (
     <article className="asset-card">
-      <div className={`asset-preview asset-${asset.type.toLowerCase()}`}>{asset.type === 'IMAGE' ? <ImagePreview asset={asset} /> : <ScanText size={26} />}</div>
+      <div className={`asset-preview asset-${asset.type.toLowerCase()}`}>{asset.type === 'IMAGE' ? <ImagePreview asset={asset} getAssetImage={getAssetImage} /> : <ScanText size={26} />}</div>
       <div className="asset-card__copy">
         <span>{asset.type === 'IMAGE' ? 'IMAGE ASSET' : 'UI SELECTOR'}</span>
         {editing ? <div className="asset-rename"><input aria-label="Tên Asset" value={name} onChange={(event) => setName(event.target.value)} /><button onClick={() => { onRename(asset, name.trim() || asset.name); setEditing(false) }}>Lưu</button></div> : <strong>{asset.name}</strong>}
@@ -65,7 +65,7 @@ export function AssetLibrary(props: AssetLibraryProps) {
       {props.workflows.map((workflow) => workflow.id === props.selectedWorkflowId && (
         <div className="asset-grid" key={workflow.id}>
           {workflow.assets.length === 0 && <div className="asset-empty"><Image size={30} /><strong>Workflow này chưa có Asset</strong><span>Dùng Capture Lab để crop ảnh hoặc lấy selector text.</span></div>}
-          {workflow.assets.map((asset) => <AssetCard key={asset.id} asset={asset} onReplace={props.onReplace} onRename={props.onRename} onDelete={props.onDelete} />)}
+          {workflow.assets.map((asset) => <AssetCard key={asset.id} asset={asset} onReplace={props.onReplace} onRename={props.onRename} onDelete={props.onDelete} getAssetImage={props.getAssetImage} />)}
         </div>
       ))}
     </section>

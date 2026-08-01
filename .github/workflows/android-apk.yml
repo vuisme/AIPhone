@@ -92,7 +92,7 @@ jobs:
         run: |
           PACKAGE="artifacts/AIPhone-Studio-v0.1.${GITHUB_RUN_NUMBER}"
           mkdir -p "$PACKAGE/studio/host" "$PACKAGE/studio/web"
-          cp studio/host/adb.mjs studio/host/server.mjs studio/host/package.json "$PACKAGE/studio/host/"
+          cp studio/host/adb.mjs studio/host/project-store.mjs studio/host/server.mjs studio/host/package.json "$PACKAGE/studio/host/"
           cp -R studio/web/dist studio/web/public studio/web/src "$PACKAGE/studio/web/"
           cp studio/web/index.html studio/web/package.json studio/web/package-lock.json studio/web/tsconfig.json studio/web/vite.config.ts "$PACKAGE/studio/web/"
           cp studio/Dockerfile studio/compose.yml studio/start-docker.cmd studio/start-docker.ps1 studio/stop-docker.cmd studio/stop-docker.ps1 studio/start-native.cmd studio/README.md "$PACKAGE/studio/"

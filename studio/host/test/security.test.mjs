@@ -26,3 +26,13 @@ test('credential encryption is bound to the exact device record and serial', () 
   assert.equal(cipher.decrypt(encrypted, 'device-id', 'serial-a'), 'pairing-token-secret')
   assert.throws(() => cipher.decrypt(encrypted, 'device-id', 'serial-b'))
 })
+
+test('callback secrets are encrypted and verified against their installation identity', () => {
+  const cipher = new CredentialCipher(randomBytes(32))
+  const encrypted = cipher.encryptCallbackSecret('s'.repeat(43), 'row-id', 'installation-id')
+
+  assert.equal(JSON.stringify(encrypted).includes('s'.repeat(43)), false)
+  assert.equal(cipher.verifyCallbackSecret(encrypted, 's'.repeat(43), 'row-id', 'installation-id'), true)
+  assert.equal(cipher.verifyCallbackSecret(encrypted, 'x'.repeat(43), 'row-id', 'installation-id'), false)
+  assert.equal(cipher.verifyCallbackSecret(encrypted, 's'.repeat(43), 'row-id', 'other-installation'), false)
+})

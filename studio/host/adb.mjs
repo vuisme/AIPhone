@@ -119,3 +119,23 @@ export class AdbBridge {
     await this.command(['-s', serial, 'shell', 'input', 'tap', String(x), String(y)])
   }
 }
+
+export class DisabledAdbBridge {
+  async listDevices() {
+    return []
+  }
+
+  async ensureForward() {
+    throw new Error('ADB transport is disabled')
+  }
+
+  async captureScreen() {
+    throw new Error('ADB transport is disabled')
+  }
+
+  async tap() {
+    throw new Error('ADB transport is disabled')
+  }
+
+  forgetForward() {}
+}

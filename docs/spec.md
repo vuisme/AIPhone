@@ -121,9 +121,18 @@ The Agent binds to device loopback only. The standalone PC Studio Host discovers
 
 Standalone Studio is available at `http://127.0.0.1:4173`. The device picker shows only devices the signed-in account may use, including serial, model and connection state from ADB. Pairing tokens remain scoped to the exact device, are encrypted persistently by the host and are never returned to browser JavaScript.
 
+### Cloud Callback
+
+- The Agent keeps its HTTP API on loopback and opens an outbound WSS connection to a public Studio/VPS origin.
+- A signed-in user claims an online installation with a one-time 10-character code; Redis expires and consumes the pending claim.
+- PostgreSQL stores an AES-256-GCM encrypted reconnect secret, device ownership and grants.
+- Existing workflow, Asset, run and log APIs tunnel through bounded `COMMAND`/`RESULT` envelopes without ADB.
+- Callback commands remain restricted to the fixed Agent API allowlist and recheck device authorization for every request.
+- Cloud Live View uses Agent capture capabilities; USB remains the rootless screenshot and recovery transport.
+
 ### LAN, future
 
-- Not implemented in the current release.
+- Direct LAN discovery is not implemented; Cloud Callback does not expose an inbound phone port.
 - A future LAN mode may use authenticated discovery, but must remain opt-in.
 - The current Agent must continue binding to loopback so USB mode does not expand its network attack surface.
 

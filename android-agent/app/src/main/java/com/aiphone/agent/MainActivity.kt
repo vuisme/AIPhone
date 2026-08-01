@@ -18,6 +18,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -29,6 +30,9 @@ import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.update.AppUpdater
 import com.aiphone.agent.update.InteractiveInstallResult
 import com.aiphone.agent.update.UpdateCheckResult
+import com.aiphone.agent.callback.CallbackEndpoint
+import com.aiphone.agent.callback.CallbackState
+import com.aiphone.agent.callback.CloudCallbackClient
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
@@ -41,6 +45,10 @@ class MainActivity : Activity() {
     private lateinit var nightlyButton: Button
     private lateinit var updateButton: Button
     private lateinit var updateStatus: TextView
+    private lateinit var callbackUrlInput: EditText
+    private lateinit var callbackStatus: TextView
+    private lateinit var callbackCode: TextView
+    private lateinit var callbackButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,6 +87,41 @@ class MainActivity : Activity() {
             addView(serviceValue)
             serviceButton = actionButton("Tắt Agent service", primary = true) { toggleService() }
             addView(serviceButton)
+        })
+
+        val callbackIdentity = preferences.callbackIdentity()
+        content.addView(sectionTitle("CLOUD CALLBACK"))
+        content.addView(card().apply {
+            addView(sectionHeader("KẾT NỐI KHÔNG CẦN ADB", "WSS outbound"))
+            addView(label("Android chủ động kết nối tới Studio/VPS qua HTTPS. Không cần mở port trên điện thoại.", MUTED, 11f, false).apply { setPadding(0, dp(8), 0, dp(8)) })
+            callbackUrlInput = EditText(context).apply {
+                hint = "https://studio.example.com"
+                setText(preferences.callbackUrl)
+                setTextColor(Color.WHITE)
+                setHintTextColor(MUTED)
+                textSize = 13f
+                isSingleLine = true
+                setPadding(dp(13), 0, dp(13), 0)
+                background = rounded(PANEL_LIGHT, 12f, Color.rgb(48, 65, 59))
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) }
+            }
+            addView(callbackUrlInput)
+            addView(label("MÃ PAIRING MỘT LẦN", MUTED, 10f, true).apply { setPadding(0, dp(16), 0, 0); letterSpacing = .12f })
+            callbackCode = label(callbackIdentity.pairingCode.chunked(5).joinToString("  "), SKY, 21f, true).apply {
+                setPadding(0, dp(8), 0, 0)
+                typeface = Typeface.MONOSPACE
+                setTextIsSelectable(true)
+            }
+            addView(callbackCode)
+            callbackStatus = label("Đang kiểm tra callback...", MUTED, 11f, false).apply { setPadding(0, dp(8), 0, 0) }
+            addView(callbackStatus)
+            callbackButton = actionButton("Bật Cloud Callback", primary = true, action = ::toggleCallback)
+            addView(callbackButton)
+            addView(actionButton("Tạo mã pairing mới", primary = false, action = ::rotateCallbackCode))
+            addView(actionButton("Sao chép mã callback", primary = false) {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("AIPhone callback pairing code", preferences.callbackIdentity().pairingCode))
+            })
         })
 
         content.addView(sectionTitle("CAPABILITIES"))
@@ -153,7 +196,51 @@ class MainActivity : Activity() {
             else -> "CHƯA BẬT · cần mở Trợ năng"
         }
         accessibilityValue.setTextColor(if (accessibilityEnabled) SKY else AMBER)
+        val callback = CloudCallbackClient.status
+        callbackStatus.text = callback.message + (callback.serial?.let { "\n$it" } ?: "")
+        callbackStatus.setTextColor(when (callback.state) {
+            CallbackState.ONLINE -> ACID
+            CallbackState.CONNECTING -> SKY
+            CallbackState.WAITING_PAIRING -> AMBER
+            CallbackState.ERROR -> DANGER
+            CallbackState.DISABLED -> MUTED
+        })
+        callbackButton.text = if (preferences.callbackEnabled) "Tắt Cloud Callback" else "Lưu URL & kết nối"
+        callbackButton.background = buttonBackground(if (preferences.callbackEnabled) DANGER else ACID, if (preferences.callbackEnabled) Color.WHITE else INK)
+        callbackUrlInput.isEnabled = !preferences.callbackEnabled
+        callbackCode.text = preferences.callbackIdentity().pairingCode.chunked(5).joinToString("  ")
         refreshChannelButtons()
+    }
+
+    private fun toggleCallback() {
+        if (preferences.callbackEnabled) {
+            preferences.callbackEnabled = false
+        } else {
+            val url = callbackUrlInput.text.toString().trim()
+            val error = runCatching { CallbackEndpoint.websocketUrl(url) }.exceptionOrNull()
+            if (error != null) {
+                callbackStatus.text = error.message ?: "Callback URL không hợp lệ"
+                callbackStatus.setTextColor(DANGER)
+                return
+            }
+            preferences.callbackUrl = url
+            preferences.callbackEnabled = true
+            if (!AutomationService.isRunning) startAgentService()
+        }
+        restartCallback()
+        callbackButton.postDelayed(::refreshStatus, 350)
+    }
+
+    private fun rotateCallbackCode() {
+        val identity = preferences.rotateCallbackPairingCode()
+        callbackCode.text = identity.pairingCode.chunked(5).joinToString("  ")
+        if (preferences.callbackEnabled) restartCallback()
+        callbackStatus.text = "Đã tạo mã mới; mã cũ hết hiệu lực khi Agent kết nối lại."
+        callbackStatus.setTextColor(SKY)
+    }
+
+    private fun restartCallback() {
+        ContextCompat.startForegroundService(this, Intent(this, AutomationService::class.java).setAction(AutomationService.ACTION_RESTART_CALLBACK))
     }
 
     private fun toggleService() {

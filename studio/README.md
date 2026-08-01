@@ -37,3 +37,23 @@ Compose starts PostgreSQL on `127.0.0.1:55432`, Redis on `127.0.0.1:56379`, and 
 On the first visit, create the initial administrator. Administrators can manage all members, workflows, devices and grants. Users can manage owned resources and use resources explicitly granted to them. Pairing tokens are encrypted in PostgreSQL and are never returned to browser JavaScript.
 
 `stop-docker.cmd` stops services without deleting the named `postgres-data` or `redis-data` volumes. Do not run `docker compose down --volumes` unless permanent account, workflow and device data deletion is intended.
+
+## Cloud Callback on a VPS
+
+Cloud Callback runs the full Studio API inside Docker and does not require ADB. Copy `cloud.env.example` to a private environment file, replace all placeholder values, then run:
+
+```bash
+docker compose --env-file cloud.env -f compose.yml -f compose.cloud.yml up -d --build
+```
+
+Keep Studio bound to `127.0.0.1:4173` and put Caddy, Nginx or another reverse proxy in front of it. The public origin must use a valid HTTPS certificate and proxy WebSocket upgrades for `/callback/v1/connect`. Caddy handles the upgrade automatically:
+
+```caddyfile
+studio.example.com {
+    reverse_proxy 127.0.0.1:4173
+}
+```
+
+In Android Agent, open **Cloud Callback**, enter `https://studio.example.com`, enable the connection, then enter the displayed 10-character code through **Thiết bị → Thêm máy Cloud** in Studio. The phone initiates the connection, so it works through NAT/4G without an inbound phone port.
+
+The initial callback gateway supports one Studio API replica. Do not horizontally scale the `studio` service until a shared socket gateway is introduced.

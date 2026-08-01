@@ -13,9 +13,11 @@ import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.workflow.WorkflowExecutor
 import com.aiphone.agent.accessibility.AccessibilityController
 import com.aiphone.agent.root.CommandResult
+import com.aiphone.agent.callback.CloudCallbackClient
 
 class AutomationService : Service() {
     private var server: AgentHttpServer? = null
+    private var callbackClient: CloudCallbackClient? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
@@ -44,6 +46,7 @@ class AutomationService : Service() {
             launchMainApp = ::launchMainPackage,
         )
         server = AgentHttpServer(this, store, executor).also { it.start() }
+        callbackClient = CloudCallbackClient(this, store).also { it.start() }
     }
 
     fun acquireRunWakeLock() {
@@ -62,11 +65,18 @@ class AutomationService : Service() {
     override fun onDestroy() {
         isRunning = false
         server?.stop()
+        callbackClient?.stop()
         releaseRunWakeLock()
         super.onDestroy()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_RESTART_CALLBACK) {
+            callbackClient?.stop()
+            callbackClient = CloudCallbackClient(this, AgentStore(this)).also { it.start() }
+        }
+        return START_STICKY
+    }
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun launchMainPackage(packageName: String): CommandResult = runCatching {
@@ -89,5 +99,6 @@ class AutomationService : Service() {
             private set
         private const val CHANNEL_ID = "aiphone_agent"
         private const val NOTIFICATION_ID = 1201
+        const val ACTION_RESTART_CALLBACK = "com.aiphone.agent.RESTART_CALLBACK"
     }
 }

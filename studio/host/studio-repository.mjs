@@ -67,6 +67,9 @@ function mapDevice(row) {
     ownerUserId: row.owner_user_id,
     ownerDisplayName: row.owner_display_name,
     grantedUserIds: row.granted_user_ids || [],
+    connectionMode: row.connection_mode || 'USB',
+    callbackDeviceId: row.callback_device_id || undefined,
+    lastSeenAt: row.last_seen_at?.toISOString?.() || row.last_seen_at,
     hasCredential: Boolean(row.credential_ciphertext),
     credential: row.credential_ciphertext ? {
       ciphertext: row.credential_ciphertext,
@@ -349,6 +352,7 @@ export class StudioRepository {
     return result.rows.map((row) => {
       const device = mapDevice(row)
       delete device.credential
+      delete device.callbackDeviceId
       return device
     })
   }
@@ -360,12 +364,66 @@ export class StudioRepository {
     return {
       claimed: true,
       authorized: true,
-      paired: device.hasCredential,
-      canPair: canPairDevice(user, device),
+      paired: device.connectionMode === 'CLOUD_CALLBACK' || device.hasCredential,
+      canPair: device.connectionMode === 'USB' && canPairDevice(user, device),
       deviceId: device.id,
+      connectionMode: device.connectionMode,
       ownerUserId: device.ownerUserId,
       ownerDisplayName: device.ownerDisplayName,
     }
+  }
+
+  async connectionForUse(user, serial) {
+    const device = await this.deviceBySerial(serial)
+    if (!device || !canUseDevice(user, device)) throw forbidden('This account cannot use the selected device')
+    return device
+  }
+
+  async authenticateCallbackDevice(callbackDeviceId, secret) {
+    const result = await this.database.query(
+      `SELECT d.*, u.display_name AS owner_display_name
+       FROM studio_devices d JOIN studio_users u ON u.id = d.owner_user_id
+       WHERE d.callback_device_id = $1 AND d.connection_mode = 'CLOUD_CALLBACK'`,
+      [callbackDeviceId],
+    )
+    const row = result.rows[0]
+    if (!row || !row.callback_secret_ciphertext) return undefined
+    const encrypted = { ciphertext: row.callback_secret_ciphertext, iv: row.callback_secret_iv, authTag: row.callback_secret_auth_tag }
+    if (!this.credentialCipher.verifyCallbackSecret(encrypted, secret, row.id, callbackDeviceId)) return undefined
+    const device = mapDevice(row)
+    delete device.credential
+    delete device.callbackDeviceId
+    return device
+  }
+
+  async claimCallbackDevice(user, hello) {
+    return this.database.transaction(async (client) => {
+      const existing = await client.query('SELECT id FROM studio_devices WHERE callback_device_id = $1 FOR UPDATE', [hello.deviceId])
+      if (existing.rowCount > 0) throw conflict('CALLBACK_ALREADY_CLAIMED', 'Callback device is already paired')
+      const id = randomUUID()
+      const serial = `cloud:${hello.deviceId}`
+      let encrypted
+      try { encrypted = this.credentialCipher.encryptCallbackSecret(hello.deviceSecret, id, hello.deviceId) } catch (error) { throw validation(error.message) }
+      const result = await client.query(
+        `INSERT INTO studio_devices(
+          id, serial, label, model, owner_user_id, connection_mode, callback_device_id,
+          callback_secret_ciphertext, callback_secret_iv, callback_secret_auth_tag, last_seen_at
+        ) VALUES ($1, $2, $3, $4, $5, 'CLOUD_CALLBACK', $6, $7, $8, $9, now()) RETURNING *`,
+        [id, serial, hello.metadata.model || serial, hello.metadata.model || null, user.id, hello.deviceId, encrypted.ciphertext, encrypted.iv, encrypted.authTag],
+      )
+      const device = mapDevice(result.rows[0])
+      delete device.credential
+      delete device.callbackDeviceId
+      return device
+    })
+  }
+
+  async markCallbackSeen(serial, metadata = {}) {
+    await this.database.query(
+      `UPDATE studio_devices SET model = COALESCE($2, model), label = COALESCE(label, $2),
+       last_seen_at = now(), updated_at = now() WHERE serial = $1 AND connection_mode = 'CLOUD_CALLBACK'`,
+      [serial, metadata.model || null],
+    )
   }
 
   async saveDeviceCredential(user, { serial, model, label, token }) {

@@ -151,6 +151,51 @@ test('secured proxy ignores browser tokens and injects the authorized stored cre
   }
 })
 
+test('secured bridge tunnels authorized Agent API requests through Cloud Callback', async () => {
+  const calls = []
+  const repository = { connectionForUse: async (_user, serial) => { calls.push(['authorize', serial]); return { serial, connectionMode: 'CLOUD_CALLBACK' } } }
+  const services = securedServices(repository)
+  services.callbackHub = {
+    attach: () => undefined,
+    isOnline: (serial) => serial === 'cloud:device-1',
+    request: async (serial, command) => {
+      calls.push(['request', serial, command.method, command.path, command.body.toString()])
+      return { status: 200, contentType: 'application/json', body: Buffer.from('{"transport":"callback"}') }
+    },
+  }
+  await withServer({ bridge: { listDevices: async () => { throw new Error('ADB must not run') } }, bridgeOnly: true, services }, async (origin) => {
+    const response = await fetch(`${origin}/bridge/devices/cloud%3Adevice-1/api/device`, {
+      headers: { Origin: 'http://127.0.0.1:4173', Cookie: 'aiphone.sid=session-token' },
+    })
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), { transport: 'callback' })
+    assert.deepEqual(calls, [
+      ['authorize', 'cloud:device-1'],
+      ['request', 'cloud:device-1', 'GET', '/api/device', ''],
+    ])
+  })
+})
+
+test('authenticated users claim a live callback device with CSRF protection', async () => {
+  const audit = []
+  const repository = { recordAudit: async (event) => audit.push(event) }
+  const services = securedServices(repository)
+  services.callbackHub = {
+    attach: () => undefined,
+    claim: async (_user, code) => ({ id: 'callback-row', serial: 'cloud:device-1', label: `Phone ${code}`, connectionMode: 'CLOUD_CALLBACK' }),
+  }
+  await withServer({ bridge: { listDevices: async () => [] }, bridgeOnly: true, services }, async (origin) => {
+    const response = await fetch(`${origin}/studio/callback-pairings`, {
+      method: 'POST',
+      headers: { Origin: 'http://127.0.0.1:4173', Cookie: 'aiphone.sid=session-token', 'X-CSRF-Token': 'csrf-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'ABCDE23456' }),
+    })
+    assert.equal(response.status, 201)
+    assert.equal((await response.json()).serial, 'cloud:device-1')
+    assert.equal(audit[0].action, 'CALLBACK_DEVICE_PAIRED')
+  })
+})
+
 test('bridge-only server preserves CORS headers when ADB fails', async () => {
   const bridge = { listDevices: async () => { throw new Error('ADB unavailable') } }
   await withServer({ bridge, bridgeOnly: true }, async (origin) => {

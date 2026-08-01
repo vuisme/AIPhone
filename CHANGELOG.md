@@ -23,6 +23,9 @@
 - PostgreSQL persistence for accounts, workflows, Assets, device ownership, grants and audit events.
 - Redis-backed opaque sessions, CSRF state, immediate revocation and login rate limiting.
 - AES-256-GCM encrypted pairing credentials scoped to authorized ADB devices and never returned to the browser.
+- Outbound WSS Cloud Callback transport with one-time device claims, encrypted reconnect identity and no ADB requirement.
+- Studio device pairing UI for adding callback phones and using the existing fleet deploy/run/log pipeline remotely.
+- VPS Compose override for the full account-aware Studio API behind an HTTPS/WebSocket reverse proxy.
 
 ### Changed
 
@@ -31,6 +34,7 @@
 - Phones now act as offline deployment targets while the Studio Host owns canonical workflow and Asset data.
 - Studio node inspectors are generated from field schemas so new node types no longer require canvas-specific forms.
 - Studio workflow and device lists are filtered by ownership, administrator access and explicit user grants.
+- Device routing now supports additive `USB` and `CLOUD_CALLBACK` connection modes.
 
 ### Fixed
 

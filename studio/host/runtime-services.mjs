@@ -4,6 +4,7 @@ import { ProjectStore } from './project-store.mjs'
 import { CredentialCipher } from './security.mjs'
 import { connectRedis, RedisSessionStore } from './session-store.mjs'
 import { StudioRepository } from './studio-repository.mjs'
+import { CallbackHub } from './callback-hub.mjs'
 
 function credentialKey(environment) {
   const encoded = environment.AIPHONE_CREDENTIAL_KEY
@@ -60,6 +61,7 @@ export async function createRuntimeServices(environment = process.env) {
   const redis = await connectRedis(environment.REDIS_URL)
   const sessions = new RedisSessionStore(redis)
   const repository = new StudioRepository(database, new CredentialCipher(credentialKey(environment)))
+  const callbackHub = new CallbackHub({ repository, redis })
   const auth = new AuthService({ accounts: repository, sessions })
   const legacyProjectStore = new ProjectStore()
   const bootstrapAdmin = (await repository.listUsers()).find((user) => user.role === 'ADMIN' && user.status === 'ACTIVE')
@@ -68,8 +70,10 @@ export async function createRuntimeServices(environment = process.env) {
     auth,
     repository,
     sessions,
+    callbackHub,
     importLegacy: (user) => importLegacyProjects(repository, legacyProjectStore, user),
     close: async () => {
+      callbackHub.close()
       await Promise.allSettled([redis.quit(), database.close()])
     },
   }

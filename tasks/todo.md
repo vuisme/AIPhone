@@ -189,3 +189,28 @@
   - Acceptance: Compose provisions Postgres/Redis with persistent volumes and restart-safe generated secrets
   - Verify: host/web tests, npm audit, Docker health and manual user testing
   - Files: Compose, launcher, README and changelog
+
+- [x] Task 39: Define the Cloud Callback protocol and threat model
+  - Acceptance: WSS messages, pairing lifetime, identity storage, bounds and authorization are explicit
+  - Verify: `docs/specs/cloud-callback.md` and ADR-004
+  - Files: protocol spec and architecture decision
+
+- [x] Task 40: Add callback pairing and command gateway
+  - Acceptance: pending devices can be claimed once; authorized commands route without invoking ADB
+  - Verify: host protocol, hub and bridge integration tests
+  - Files: callback hub, repository migration, Redis pairing state and server routes
+
+- [x] Task 41: Add Android Cloud Callback client
+  - Acceptance: Agent persists identity, requires WSS, reconnects and executes bounded commands through loopback API
+  - Verify: Android unit tests and GitHub SDK build
+  - Files: callback client, preferences, service and Agent dashboard
+
+- [x] Task 42: Add callback devices to Studio fleet UI
+  - Acceptance: users claim by code and use callback devices through existing deploy/run/log flows
+  - Verify: web tests, typecheck and production build
+  - Files: API client, device picker and Live View labels
+
+- [ ] Task 43: Deliver and verify Cloud Callback builds
+  - Acceptance: local DB migration is safe, cloud Compose is valid and Nightly APK/Studio artifacts publish
+  - Verify: Docker health, CI runs and release inspection
+  - Files: Compose, CI, docs and release artifacts

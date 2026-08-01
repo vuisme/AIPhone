@@ -91,6 +91,19 @@ CREATE INDEX IF NOT EXISTS studio_device_grants_user_idx ON studio_device_grants
 CREATE INDEX IF NOT EXISTS studio_audit_created_idx ON studio_audit_events(created_at DESC);
 `
 
+const MIGRATION_2 = `
+ALTER TABLE studio_devices
+  ADD COLUMN IF NOT EXISTS connection_mode text NOT NULL DEFAULT 'USB'
+    CHECK (connection_mode IN ('USB', 'CLOUD_CALLBACK')),
+  ADD COLUMN IF NOT EXISTS callback_device_id text UNIQUE,
+  ADD COLUMN IF NOT EXISTS callback_secret_ciphertext text,
+  ADD COLUMN IF NOT EXISTS callback_secret_iv text,
+  ADD COLUMN IF NOT EXISTS callback_secret_auth_tag text,
+  ADD COLUMN IF NOT EXISTS last_seen_at timestamptz;
+
+CREATE INDEX IF NOT EXISTS studio_devices_connection_mode_idx ON studio_devices(connection_mode);
+`
+
 export class Database {
   constructor(connectionString = process.env.DATABASE_URL) {
     if (!connectionString) throw new Error('DATABASE_URL is required')
@@ -107,6 +120,11 @@ export class Database {
       if (applied.rowCount === 0) {
         await client.query(MIGRATION_1)
         await client.query('INSERT INTO schema_migrations(version) VALUES (1)')
+      }
+      const callbackApplied = await client.query('SELECT 1 FROM schema_migrations WHERE version = 2')
+      if (callbackApplied.rowCount === 0) {
+        await client.query(MIGRATION_2)
+        await client.query('INSERT INTO schema_migrations(version) VALUES (2)')
       }
       await client.query('COMMIT')
     } catch (error) {

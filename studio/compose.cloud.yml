@@ -1,0 +1,12 @@
+services:
+  studio:
+    environment:
+      AIPHONE_STATIC_ONLY: "0"
+      AIPHONE_ADB_DISABLED: "1"
+      AIPHONE_COOKIE_SECURE: "1"
+      AIPHONE_STUDIO_HOST: "0.0.0.0"
+      AIPHONE_STUDIO_PORT: "4173"
+      DATABASE_URL: postgresql://aiphone:${AIPHONE_POSTGRES_PASSWORD}@postgres:5432/aiphone
+      REDIS_URL: redis://:${AIPHONE_REDIS_PASSWORD}@redis:6379
+      AIPHONE_CREDENTIAL_KEY: ${AIPHONE_CREDENTIAL_KEY:?AIPHONE_CREDENTIAL_KEY is required}
+    command: ["node", "host/server.mjs", "--port=4173"]

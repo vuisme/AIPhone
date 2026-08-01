@@ -6,6 +6,7 @@ function resolveBridgeOrigin(): string {
   const configured = (import.meta.env.VITE_BRIDGE_ORIGIN ?? '').replace(/\/$/, '')
   if (!configured) return ''
   const url = new URL(configured)
+  if (['127.0.0.1', 'localhost'].includes(url.hostname) && !['127.0.0.1', 'localhost'].includes(window.location.hostname)) return ''
   if (['127.0.0.1', 'localhost'].includes(url.hostname) && ['127.0.0.1', 'localhost'].includes(window.location.hostname)) {
     url.hostname = window.location.hostname
   }
@@ -112,6 +113,7 @@ export interface AdbDevice {
   deviceId?: string
   ownerUserId?: string
   ownerDisplayName?: string
+  connectionMode?: 'USB' | 'CLOUD_CALLBACK'
 }
 
 export interface DeviceHealth {
@@ -218,6 +220,8 @@ export interface ManagedDevice {
   hasCredential: boolean
   createdAt?: string
   updatedAt?: string
+  connectionMode?: 'USB' | 'CLOUD_CALLBACK'
+  lastSeenAt?: string
 }
 
 export const authApi = {
@@ -318,6 +322,14 @@ export const credentialApi = {
   async forget(serial = selectedSerial): Promise<void> {
     const response = await hostFetch(`/studio/devices/${encodeURIComponent(serial)}/credential`, { method: 'DELETE' })
     if (!response.ok) throw await apiError(response)
+  },
+}
+
+export const callbackApi = {
+  async pair(code: string): Promise<ManagedDevice> {
+    return parseJson(await hostFetch('/studio/callback-pairings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }),
+    }))
   },
 }
 

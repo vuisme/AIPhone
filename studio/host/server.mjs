@@ -4,7 +4,7 @@ import { stat } from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AdbBridge } from './adb.mjs'
+import { AdbBridge, DisabledAdbBridge } from './adb.mjs'
 import { forbidden, HttpError, unauthorized } from './errors.mjs'
 import { ProjectStore } from './project-store.mjs'
 import { createRuntimeServices } from './runtime-services.mjs'
@@ -24,6 +24,7 @@ const SECURITY_HEADERS = {
 const API_PATHS = [
   /^\/api\/device$/,
   /^\/api\/screenshots$/,
+  /^\/api\/input\/tap$/,
   /^\/api\/ui-hierarchy$/,
   /^\/api\/workflows$/,
   /^\/api\/workflows\/default$/,
@@ -205,7 +206,7 @@ export function createStudioServer({
   bridgeOnly = false,
   staticOnly = false,
 } = {}) {
-  return http.createServer(async (request, response) => {
+  const server = http.createServer(async (request, response) => {
     const requestId = request.headers['x-request-id'] || randomUUID()
     let responseHeaders = { 'X-Request-Id': requestId }
     const structuredErrors = Boolean(services)
@@ -369,6 +370,12 @@ export function createStudioServer({
       if (services && request.method === 'GET' && url.pathname === '/studio/devices') {
         return json(response, 200, { devices: await services.repository.listDevices(authentication.user) }, responseHeaders)
       }
+      if (services && request.method === 'POST' && url.pathname === '/studio/callback-pairings') {
+        requireCsrf(services, authentication, request)
+        const device = await services.callbackHub.claim(authentication.user, (await requestJson(request)).code)
+        await services.repository.recordAudit({ actorUserId: authentication.user.id, action: 'CALLBACK_DEVICE_PAIRED', targetType: 'DEVICE', targetId: device.id, metadata: { serial: device.serial } })
+        return json(response, 201, safeDevice(device), responseHeaders)
+      }
 
       const studioWorkflow = STUDIO_WORKFLOW_PATH.exec(url.pathname)
       const studioAsset = STUDIO_ASSET_PATH.exec(url.pathname)
@@ -406,7 +413,7 @@ export function createStudioServer({
       if (url.pathname.startsWith('/studio/')) throw new HttpError(404, 'NOT_FOUND', 'Unknown Studio resource')
 
       if (request.method === 'GET' && url.pathname === '/bridge/devices') {
-        const devices = await bridge.listDevices()
+        const devices = [...await bridge.listDevices(), ...(services?.callbackHub?.listOnlineDevices() || [])]
         if (!services) return json(response, 200, { devices }, responseHeaders)
         const visible = []
         for (const device of devices) {
@@ -419,39 +426,68 @@ export function createStudioServer({
       const bridgeScreen = BRIDGE_SCREEN_PATH.exec(url.pathname)
       if (bridgeScreen && request.method === 'GET') {
         const serial = decodeURIComponent(bridgeScreen[1])
+        let deviceStatus
         if (services) {
-          const status = await services.repository.connectedDeviceStatus(authentication.user, serial)
-          if (status.claimed && status.authorized === false) throw forbidden('This account cannot access the selected device')
+          deviceStatus = await services.repository.connectedDeviceStatus(authentication.user, serial)
+          if (deviceStatus.claimed && deviceStatus.authorized === false) throw forbidden('This account cannot access the selected device')
+        }
+        if (deviceStatus?.connectionMode === 'CLOUD_CALLBACK') {
+          const result = await services.callbackHub.request(serial, { method: 'POST', path: '/api/screenshots' })
+          return bytes(response, result.status, result.contentType, result.body, responseHeaders)
         }
         return bytes(response, 200, 'image/png', await bridge.captureScreen(serial), responseHeaders)
       }
       const bridgeTap = BRIDGE_TAP_PATH.exec(url.pathname)
       if (bridgeTap && request.method === 'POST') {
         const serial = decodeURIComponent(bridgeTap[1])
+        let deviceStatus
         if (services) {
           requireCsrf(services, authentication, request)
-          const status = await services.repository.connectedDeviceStatus(authentication.user, serial)
-          if (status.claimed && status.authorized === false) throw forbidden('This account cannot access the selected device')
+          deviceStatus = await services.repository.connectedDeviceStatus(authentication.user, serial)
+          if (deviceStatus.claimed && deviceStatus.authorized === false) throw forbidden('This account cannot access the selected device')
         }
         const payload = await requestJson(request)
         const x = Number(payload.x)
         const y = Number(payload.y)
         if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x > 100_000 || y > 100_000) throw new HttpError(422, 'INVALID_TAP', 'Tap coordinates are invalid')
-        await bridge.tap(serial, x, y)
+        if (deviceStatus?.connectionMode === 'CLOUD_CALLBACK') {
+          const result = await services.callbackHub.request(serial, {
+            method: 'POST',
+            path: '/api/input/tap',
+            headers: { 'content-type': 'application/json' },
+            body: Buffer.from(JSON.stringify({ x, y })),
+          })
+          if (result.status < 200 || result.status >= 300) return bytes(response, result.status, result.contentType, result.body, responseHeaders)
+        } else await bridge.tap(serial, x, y)
         return json(response, 200, { status: 'ok', x, y }, responseHeaders)
       }
       const match = url.pathname.match(/^\/bridge\/devices\/([^/]+)\/api\//)
       if (match) {
         const serial = decodeURIComponent(match[1])
+        const targetPath = agentPathFromBridgeUrl(request.url, serial)
+        if (services?.callbackHub?.isOnline(serial)) {
+          await services.repository.connectionForUse(authentication.user, serial)
+          const requestHeaders = {}
+          if (typeof request.headers['content-type'] === 'string') requestHeaders['content-type'] = request.headers['content-type']
+          const result = await services.callbackHub.request(serial, {
+            method: request.method,
+            path: targetPath,
+            headers: requestHeaders,
+            body: await requestBody(request),
+          })
+          return bytes(response, result.status, result.contentType, result.body, {
+            ...responseHeaders,
+            ...([401, 403].includes(result.status) ? { 'X-AIPhone-Pairing-Rejected': '1' } : {}),
+          })
+        }
         const devices = await bridge.listDevices()
         const device = devices.find((candidate) => candidate.serial === serial && candidate.state === 'device')
-        if (!device) throw new HttpError(404, 'DEVICE_NOT_CONNECTED', 'ADB device is not connected')
+        if (!device) throw new HttpError(404, 'DEVICE_NOT_CONNECTED', 'Device is not connected')
         let pairingToken
         if (services) {
           pairingToken = await services.repository.credentialForUse(authentication.user, serial)
           if (!pairingToken) throw unauthorized('Pairing credential is required for this device')
         }
-        const targetPath = agentPathFromBridgeUrl(request.url, serial)
         const port = await bridge.ensureForward(serial)
         return proxyToAgent(
           request,
@@ -473,11 +509,14 @@ export function createStudioServer({
       return json(response, status, errorBody(error, requestId, structuredErrors), responseHeaders)
     }
   })
+  services?.callbackHub?.attach(server)
+  return server
 }
 
 export async function startStudioServer({ port = 4173, host = '127.0.0.1', bridgeOnly = false, staticOnly = false } = {}) {
   const services = staticOnly ? undefined : await createRuntimeServices()
-  const server = createStudioServer({ bridgeOnly, staticOnly, services })
+  const bridge = process.env.AIPHONE_ADB_DISABLED === '1' ? new DisabledAdbBridge() : new AdbBridge()
+  const server = createStudioServer({ bridge, bridgeOnly, staticOnly, services })
   server.listen(port, host, () => {
     process.stdout.write(`AIPhone Studio (${staticOnly ? 'static' : bridgeOnly ? 'bridge' : 'full'}): http://${host}:${port}\n`)
   })

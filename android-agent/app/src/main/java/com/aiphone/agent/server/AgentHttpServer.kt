@@ -99,6 +99,7 @@ class AgentHttpServer(
             when {
                 request.method == "GET" && request.path == "/api/device" -> deviceHealth()
                 request.method == "POST" && request.path == "/api/screenshots" -> HttpResponse(200, "image/png", RootGateway.captureScreen())
+                request.method == "POST" && request.path == "/api/input/tap" -> tapInput(request.body)
                 request.method == "POST" && request.path == "/api/ui-hierarchy" -> uiHierarchy()
                 request.method == "GET" && request.path == "/api/workflows" -> HttpResponse(200, "application/json; charset=utf-8", store.listWorkflows().toByteArray())
                 request.method == "POST" && request.path == "/api/workflows" -> HttpResponse(200, "application/json; charset=utf-8", store.createWorkflow(request.body).toByteArray())
@@ -190,6 +191,16 @@ class AgentHttpServer(
         }
         val service = AIPhoneAccessibilityService.instance ?: error("AIPhone UI Inspector is unavailable")
         return HttpResponse.json(body = service.hierarchyJson())
+    }
+
+    private fun tapInput(bytes: ByteArray): HttpResponse {
+        val body = JSONObject(bytes.toString(Charsets.UTF_8))
+        val x = body.getInt("x")
+        val y = body.getInt("y")
+        require(x in 0..10000 && y in 0..10000) { "Tap coordinates are invalid" }
+        val tapped = AIPhoneAccessibilityService.instance?.tap(x, y) == true || RootGateway.tap(x, y).isSuccess
+        check(tapped) { "Tap requires Accessibility or root" }
+        return HttpResponse.json(body = JSONObject().put("status", "ok").put("x", x).put("y", y))
     }
 
     private fun staticAsset(rawPath: String): HttpResponse {

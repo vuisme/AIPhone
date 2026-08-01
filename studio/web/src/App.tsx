@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Boxes, Camera, CircleStop, CloudOff, Cpu, ListTree, LogOut, Monitor, Play, RefreshCw, Save, ShieldCheck, Smartphone, Usb, Workflow, X } from 'lucide-react'
+import { Boxes, Camera, CircleStop, Cloud, CloudOff, Cpu, ListTree, LogOut, Monitor, Play, RefreshCw, Save, ShieldCheck, Smartphone, Usb, Workflow, X } from 'lucide-react'
 import {
   agentApi,
   bridgeApi,
+  callbackApi,
   credentialApi,
   getAgentDeviceSerial,
   hasAgentToken,
@@ -97,8 +98,10 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
   const [connectionRevision, setConnectionRevision] = useState(0)
   const [showDevices, setShowDevices] = useState(standalone && !selectedSerial)
   const [showPairing, setShowPairing] = useState(!standalone && !hasAgentToken())
+  const [showCallbackPairing, setShowCallbackPairing] = useState(false)
   const [showLiveView, setShowLiveView] = useState(false)
   const [pairingInput, setPairingInput] = useState('')
+  const [callbackPairingCode, setCallbackPairingCode] = useState('')
 
   const workflow = workflows.find((candidate) => candidate.id === selectedWorkflowId) ?? workflows[0]
   const validation = useMemo(() => validateWorkflow(workflow), [workflow])
@@ -113,7 +116,7 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
   const scanDevices = useCallback(async () => {
     setIsScanning(true)
     try { setAdbDevices(await bridgeApi.getDevices()); setConnectionRevision((value) => value + 1) }
-    catch (reason) { setNotice(reason instanceof Error ? `Không thể quét USB: ${reason.message}` : 'Không thể quét thiết bị USB') }
+    catch (reason) { setNotice(reason instanceof Error ? `Không thể quét thiết bị: ${reason.message}` : 'Không thể quét thiết bị') }
     finally { setIsScanning(false) }
   }, [])
 
@@ -394,6 +397,21 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
       setNotice(reason instanceof Error ? reason.message : 'Không thể quên pairing token')
     }
   }
+  const pairCallbackDevice = async () => {
+    try {
+      const paired = await callbackApi.pair(callbackPairingCode)
+      setCallbackPairingCode('')
+      setShowCallbackPairing(false)
+      await scanDevices()
+      setAgentDeviceSerial(paired.serial)
+      setSelectedSerial(paired.serial)
+      setTargetSerials((current) => current.includes(paired.serial) ? current : [...current, paired.serial])
+      setConnectionRevision((value) => value + 1)
+      setNotice(`Đã thêm ${paired.label || paired.model || 'thiết bị Cloud Callback'}`)
+    } catch (reason) {
+      setNotice(reason instanceof Error ? `Không thể thêm thiết bị Cloud: ${reason.message}` : 'Không thể thêm thiết bị Cloud')
+    }
+  }
   const stopRun = async () => {
     const running = Object.entries(fleetProgress).filter(([, value]) => value.state === 'RUNNING').map(([serial]) => serial)
     const serials = running.length ? running : [selectedSerial].filter(Boolean)
@@ -430,8 +448,9 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
 
       {captureTarget && <CaptureLab workflowId={captureTarget.workflowId} initialImageAsset={captureTarget.initialImageAsset} capture={agentApi.captureScreenshot} inspect={agentApi.getUiHierarchy} onClose={() => setCaptureTarget(undefined)} onSaveImage={saveImageAsset} onSaveSelector={saveSelectorAsset} />}
       {showLiveView && selectedSerial && <LiveViewPanel serial={selectedSerial} onClose={() => setShowLiveView(false)} />}
-      {showDevices && standalone && <div className="modal-backdrop device-backdrop"><section className="device-card" role="dialog" aria-modal="true" aria-labelledby="device-title"><header><div><span>USB FLEET / ADB</span><h2 id="device-title">Chọn các điện thoại đích</h2></div><button className="icon-button" onClick={() => setShowDevices(false)} aria-label="Đóng"><X size={18} /></button></header><p>Chỉ hiện thiết bị chưa có chủ hoặc đã được cấp cho tài khoản <strong>{user.displayName}</strong>. Token đã lưu không được gửi về trình duyệt.</p><div className="device-list">{adbDevices.length === 0 && <div className="device-empty"><Usb size={24} /><strong>Chưa tìm thấy thiết bị được phép dùng</strong><span>Kiểm tra cáp USB, quyền tài khoản rồi bấm Quét lại.</span></div>}{adbDevices.map((candidate) => <button key={candidate.serial} className={`device-option ${targetSerials.includes(candidate.serial) ? 'selected' : ''}`} disabled={candidate.state !== 'device'} onClick={() => toggleTargetDevice(candidate.serial)}><span className="device-check">{targetSerials.includes(candidate.serial) ? '✓' : ''}</span><span><strong>{candidate.model || candidate.serial}</strong><small>{candidate.serial} · {candidate.paired ? 'token đã mã hóa' : candidate.canPair ? 'cần pairing token' : 'được cấp · chờ chủ pairing'}</small></span><em data-state={candidate.state}>{candidate.serial === selectedSerial ? 'Máy chính' : candidate.state === 'device' ? 'Sẵn sàng' : candidate.state}</em></button>)}</div><footer><button className="secondary-button" onClick={() => void scanDevices()} disabled={isScanning}><RefreshCw size={16} className={isScanning ? 'spin' : ''} /> {isScanning ? 'Đang quét...' : 'Quét lại'}</button>{selectedSerial && isPaired && selectedCanPair && <button className="secondary-button danger-text" onClick={() => void forgetCredential()}>Quên token</button>}<button className="primary-button" onClick={() => { setShowDevices(false); if (selectedSerial && !deviceIsPaired(selectedSerial) && selectedCanPair) setShowPairing(true) }}>Dùng {targetSerials.length} máy</button></footer></section></div>}
+      {showDevices && standalone && <div className="modal-backdrop device-backdrop"><section className="device-card" role="dialog" aria-modal="true" aria-labelledby="device-title"><header><div><span>DEVICE FLEET / USB + CLOUD</span><h2 id="device-title">Chọn các điện thoại đích</h2></div><button className="icon-button" onClick={() => setShowDevices(false)} aria-label="Đóng"><X size={18} /></button></header><p>Chỉ hiện thiết bị chưa có chủ hoặc đã được cấp cho tài khoản <strong>{user.displayName}</strong>. Credential đã lưu không được gửi về trình duyệt.</p><div className="device-list">{adbDevices.length === 0 && <div className="device-empty"><Usb size={24} /><strong>Chưa tìm thấy thiết bị được phép dùng</strong><span>Kết nối USB hoặc thêm máy bằng mã Cloud Callback.</span></div>}{adbDevices.map((candidate) => <button key={candidate.serial} className={`device-option ${targetSerials.includes(candidate.serial) ? 'selected' : ''}`} disabled={candidate.state !== 'device'} onClick={() => toggleTargetDevice(candidate.serial)}><span className="device-check">{targetSerials.includes(candidate.serial) ? '✓' : ''}</span><span><strong>{candidate.model || candidate.serial}</strong><small>{candidate.connectionMode === 'CLOUD_CALLBACK' ? 'Cloud Callback' : 'USB'} · {candidate.paired ? 'đã xác thực' : candidate.canPair ? 'cần pairing token' : 'được cấp · chờ chủ pairing'}</small></span><em data-state={candidate.state}>{candidate.serial === selectedSerial ? 'Máy chính' : candidate.state === 'device' ? 'Sẵn sàng' : candidate.state}</em></button>)}</div><footer><button className="secondary-button" onClick={() => void scanDevices()} disabled={isScanning}><RefreshCw size={16} className={isScanning ? 'spin' : ''} /> {isScanning ? 'Đang quét...' : 'Quét lại'}</button><button className="secondary-button" onClick={() => setShowCallbackPairing(true)}><Cloud size={16} /> Thêm máy Cloud</button>{selectedSerial && isPaired && selectedCanPair && <button className="secondary-button danger-text" onClick={() => void forgetCredential()}>Quên token</button>}<button className="primary-button" onClick={() => { setShowDevices(false); if (selectedSerial && !deviceIsPaired(selectedSerial) && selectedCanPair) setShowPairing(true) }}>Dùng {targetSerials.length} máy</button></footer></section></div>}
       {showPairing && <div className="modal-backdrop pairing-backdrop"><section className="pairing-card" role="dialog" aria-modal="true" aria-labelledby="pairing-title"><span>ENCRYPTED DEVICE CREDENTIAL</span><h2 id="pairing-title">Ghép nối với Android Agent</h2><p>Nhập pairing token hiển thị trong app AIPhone Agent. Backend mã hóa token bằng AES-256-GCM, gắn với đúng thiết bị và tài khoản được phép; browser không thể đọc lại token.</p><input id="pairing-token" name="pairing-token" aria-label="Pairing token" autoFocus value={pairingInput} onChange={(event) => setPairingInput(event.target.value)} placeholder="xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx" /><div><button className="secondary-button" onClick={() => setShowPairing(false)}>Để sau</button><button className="primary-button" disabled={pairingInput.replace(/\s/g, '').length < 16 || !selectedCanPair} onClick={() => void connectWithToken()}>Mã hóa & kết nối</button></div></section></div>}
+      {showCallbackPairing && <div className="modal-backdrop pairing-backdrop"><section className="pairing-card" role="dialog" aria-modal="true" aria-labelledby="callback-pairing-title"><span>WSS / ONE-TIME CLAIM</span><h2 id="callback-pairing-title">Thêm thiết bị Cloud Callback</h2><p>Bật Cloud Callback trong Android Agent, nhập URL Studio HTTPS rồi nhập mã 10 ký tự đang hiển thị trên điện thoại. Mã hết hạn sau 10 phút và chỉ dùng được một lần.</p><input aria-label="Mã Cloud Callback" autoFocus value={callbackPairingCode} onChange={(event) => setCallbackPairingCode(event.target.value.toUpperCase())} placeholder="ABCDE 23456" maxLength={12} /><div><button className="secondary-button" onClick={() => setShowCallbackPairing(false)}>Hủy</button><button className="primary-button" disabled={callbackPairingCode.replace(/[\s-]/g, '').length !== 10} onClick={() => void pairCallbackDevice()}><Cloud size={16} /> Thêm thiết bị</button></div></section></div>}
     </main>
   )
 }

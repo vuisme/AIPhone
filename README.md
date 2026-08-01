@@ -22,6 +22,7 @@ AIPhone is an Android automation Agent with a browser-based no-code workflow Stu
 - Professional Studio accounts with `ADMIN` and `USER` roles, workflow/device ownership and explicit grants.
 - PostgreSQL-backed workflows, Assets, devices and audit events with Redis-backed sessions and login throttling.
 - Restart-safe encrypted pairing credentials injected only for authorized device requests.
+- Outbound `CLOUD_CALLBACK` transport for pairing and running remote phones through WSS without ADB or inbound phone ports.
 
 The initial target is `com.garena.game.kgvn` on Xiaomi HyperOS 3 with KernelSU. The project does not inject into or inspect game memory and is not intended for in-match automation.
 
@@ -74,6 +75,8 @@ Docker Compose runs PostgreSQL, Redis and the web UI. Studio is available at `12
 
 The launcher generates `studio/.runtime/studio.env` once and reuses it across upgrades. The first visit creates the initial administrator. Do not delete the runtime secret file or the named PostgreSQL volume: together they preserve accounts, workflows, device grants and decryptable pairing credentials.
 
+For a VPS deployment, combine `studio/compose.yml` with `studio/compose.cloud.yml` and place an HTTPS/WebSocket reverse proxy in front of `127.0.0.1:4173`. Android Agent then connects outbound to the public Studio URL and can be claimed with a one-time code; USB and ADB are not required for that device transport.
+
 ## Start Studio without Docker
 
 Requirements on the PC:
@@ -98,7 +101,7 @@ Then:
 5. Select an authorized phone by model and ADB serial.
 6. Enter its pairing token only if the backend has not already stored one.
 
-The PC host creates a separate ADB forward for the selected serial. The Agent remains bound to device loopback; Wi-Fi/LAN discovery is intentionally deferred.
+The PC host creates a separate ADB forward for USB devices. The Agent HTTP API remains bound to device loopback; remote phones instead use the outbound WSS Cloud Callback, while direct Wi-Fi/LAN discovery remains deferred.
 
 ## Repository layout
 
@@ -116,6 +119,7 @@ The PC host creates a separate ADB forward for the selected serial. The Agent re
 - Browser requests require an opaque server-side Studio session and CSRF protection for mutations.
 - Android Agent requests require its random pairing token; the bridge injects only the encrypted credential stored for the authorized ADB serial.
 - Pairing tokens stay scoped to one ADB serial, are never stored in workflow data and are never returned to browser JavaScript.
+- Cloud callback device secrets are encrypted at rest; one-time pairing codes expire in Redis and tunneled paths remain allowlisted.
 - Studio cannot send arbitrary shell commands.
 - Clone actions are restricted to package `com.garena.game.kgvn` and user `999`.
 - The updater accepts only fixed `vuisme/AIPhone` GitHub Release URLs and verifies package name, version code and signing certificate.

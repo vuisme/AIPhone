@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { clampSelection, displayToNativeRect } from './crop'
 
-describe('template crop coordinates', () => {
+describe('Asset crop coordinates', () => {
   it('maps CSS display pixels to native screenshot pixels', () => {
     expect(
       displayToNativeRect(

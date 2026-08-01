@@ -284,11 +284,11 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
               <strong>{selectedDefinition.label}</strong>
               <code>{selectedNode.id}</code>
             </div>
-            {['WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE'].includes(selectedNode.data.nodeType) && (
-              <label>Template
-                <select value={String(selectedNode.data.config.templateId ?? '')} onChange={(event) => updateConfig('templateId', event.target.value)}>
-                  <option value="">Chọn template...</option>
-                  {workflow.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+            {['WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE', 'TAP_TEXT'].includes(selectedNode.data.nodeType) && (
+              <label>Asset
+                <select value={String(selectedNode.data.config.assetId ?? '')} onChange={(event) => updateConfig('assetId', event.target.value)}>
+                  <option value="">Chọn Asset...</option>
+                  {workflow.assets.filter((asset) => selectedNode.data.nodeType === 'TAP_TEXT' ? asset.type === 'UI_SELECTOR' : asset.type === 'IMAGE').map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
                 </select>
               </label>
             )}
@@ -296,6 +296,15 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
               <label>Độ tin cậy
                 <div className="range-row"><input type="range" min="0.5" max="1" step="0.01" value={Number(selectedNode.data.config.threshold)} onChange={(event) => updateConfig('threshold', Number(event.target.value))} /><output>{Math.round(Number(selectedNode.data.config.threshold) * 100)}%</output></div>
               </label>
+            )}
+            {selectedNode.data.nodeType === 'TAP_IMAGE' && (
+              <>
+                <label className="checkbox-label"><input type="checkbox" checked={selectedNode.data.config.verifyTap !== false} onChange={(event) => updateConfig('verifyTap', event.target.checked)} /> Xác nhận ảnh biến mất sau khi bấm</label>
+                <label>Lệch tâm X (px)<input type="number" value={Number(selectedNode.data.config.offsetX ?? 0)} onChange={(event) => updateConfig('offsetX', Number(event.target.value))} /></label>
+                <label>Lệch tâm Y (px)<input type="number" value={Number(selectedNode.data.config.offsetY ?? 0)} onChange={(event) => updateConfig('offsetY', Number(event.target.value))} /></label>
+                <label>Số lần thử bấm<input type="number" min="1" max="5" value={Number(selectedNode.data.config.tapAttempts ?? 2)} onChange={(event) => updateConfig('tapAttempts', Number(event.target.value))} /></label>
+                <label>Chờ xác nhận (ms)<input type="number" min="100" max="5000" value={Number(selectedNode.data.config.tapVerificationDelayMs ?? 700)} onChange={(event) => updateConfig('tapVerificationDelayMs', Number(event.target.value))} /></label>
+              </>
             )}
             {'timeoutMs' in selectedNode.data.config && (
               <label>Timeout (ms)<input type="number" min="100" value={Number(selectedNode.data.config.timeoutMs)} onChange={(event) => updateConfig('timeoutMs', Number(event.target.value))} /></label>

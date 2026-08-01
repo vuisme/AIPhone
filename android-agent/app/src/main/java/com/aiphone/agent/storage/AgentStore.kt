@@ -2,16 +2,24 @@ package com.aiphone.agent.storage
 
 import android.content.Context
 import android.util.Base64
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.SecureRandom
 
 class AgentStore(context: Context) {
     private val root = File(context.filesDir, "aiphone").apply { mkdirs() }
-    private val workflowFile = File(root, "workflow-default.json")
+    private val legacyWorkflowFile = File(root, "workflow-default.json")
+    private val workflowDirectory = File(root, "workflows").apply { mkdirs() }
     private val accessTokenFile = File(root, "access-token.txt")
-    private val templateDirectory = File(root, "templates").apply { mkdirs() }
+    private val assetDirectory = File(root, "assets").apply { mkdirs() }
+    private val legacyTemplateDirectory = File(root, "templates").apply { mkdirs() }
     val runDirectory = File(root, "runs").apply { mkdirs() }
+
+    init {
+        ensureStarterWorkflow()
+        migrateLegacyAssets()
+    }
 
     @Synchronized
     fun accessToken(): String {
@@ -23,45 +31,167 @@ class AgentStore(context: Context) {
     }
 
     @Synchronized
-    fun readWorkflow(): String {
-        if (!workflowFile.exists()) writeAtomically(workflowFile, STARTER_WORKFLOW.toByteArray())
-        return workflowFile.readText()
+    fun listWorkflows(): String {
+        ensureStarterWorkflow()
+        val summaries = workflowDirectory.listFiles { file -> file.isFile && file.extension == "json" }
+            .orEmpty()
+            .map { file -> workflowSummary(JSONObject(file.readText())) }
+            .sortedByDescending { it.optString("updatedAt") }
+        return JSONObject().put("workflows", JSONArray(summaries)).toString()
     }
 
     @Synchronized
-    fun saveWorkflow(body: ByteArray): String {
+    fun hasWorkflow(id: String): Boolean = workflowFile(id).isFile
+
+    @Synchronized
+    fun readWorkflow(id: String = DEFAULT_WORKFLOW_ID): String {
+        val file = workflowFile(id)
+        require(file.isFile) { "Unknown workflow $id" }
+        return normalizeWorkflow(JSONObject(file.readText()), id).toString()
+    }
+
+    @Synchronized
+    fun saveWorkflow(id: String, body: ByteArray): String {
+        require(body.size <= MAX_WORKFLOW_BYTES) { "Workflow is too large" }
+        val normalized = normalizeWorkflow(JSONObject(body.toString(Charsets.UTF_8)), id)
+        writeAtomically(workflowFile(id), normalized.toString().toByteArray())
+        return normalized.toString()
+    }
+
+    @Synchronized
+    fun createWorkflow(body: ByteArray): String {
         require(body.size <= MAX_WORKFLOW_BYTES) { "Workflow is too large" }
         val json = JSONObject(body.toString(Charsets.UTF_8))
-        require(json.optInt("schemaVersion") == 1) { "Unsupported workflow schema" }
-        require(json.optJSONArray("nodes") != null) { "Workflow nodes are required" }
-        writeAtomically(workflowFile, json.toString().toByteArray())
-        return json.toString()
+        val id = json.getString("id")
+        require(!workflowFile(id).exists()) { "Workflow $id already exists" }
+        return saveWorkflow(id, body)
     }
 
     @Synchronized
-    fun saveTemplate(body: ByteArray): String {
-        require(body.size <= MAX_TEMPLATE_UPLOAD_BYTES) { "Template upload is too large" }
+    fun deleteWorkflow(id: String) {
+        val file = workflowFile(id)
+        require(file.isFile) { "Unknown workflow $id" }
+        val workflowCount = workflowDirectory.listFiles { candidate -> candidate.isFile && candidate.extension == "json" }?.size ?: 0
+        check(workflowCount > 1) { "Cannot delete the final workflow" }
+        check(file.delete()) { "Cannot delete workflow $id" }
+        File(assetDirectory, id).deleteRecursively()
+    }
+
+    @Synchronized
+    fun saveImageAsset(workflowId: String, body: ByteArray): String {
+        require(hasWorkflow(workflowId)) { "Unknown workflow $workflowId" }
+        require(body.size <= MAX_ASSET_UPLOAD_BYTES) { "Asset upload is too large" }
         val upload = JSONObject(body.toString(Charsets.UTF_8))
         val record = upload.getJSONObject("record")
         val id = record.getString("id")
-        require(ID_PATTERN.matches(id)) { "Invalid template id" }
+        require(record.optString("type", "IMAGE") == "IMAGE") { "Only IMAGE Assets accept PNG uploads" }
+        require(record.optString("workflowId", workflowId) == workflowId) { "Asset belongs to another workflow" }
+        validateId(id, "Asset")
         val dataUrl = upload.getString("imageBase64")
-        val encoded = dataUrl.substringAfter(',', dataUrl)
-        val decoded = Base64.decode(encoded, Base64.DEFAULT)
-        require(decoded.size <= MAX_TEMPLATE_BYTES) { "Template image is too large" }
+        val decoded = Base64.decode(dataUrl.substringAfter(',', dataUrl), Base64.DEFAULT)
+        require(decoded.size <= MAX_ASSET_BYTES) { "Asset image is too large" }
         require(decoded.size >= PNG_SIGNATURE.size && PNG_SIGNATURE.indices.all { decoded[it] == PNG_SIGNATURE[it] }) {
-            "Template must be a PNG image"
+            "Asset image must be a PNG"
         }
-        writeAtomically(File(templateDirectory, "$id.png"), decoded)
-        return record.toString()
+        val directory = File(assetDirectory, workflowId).apply { mkdirs() }
+        writeAtomically(File(directory, "$id.png"), decoded)
+        return record.apply {
+            put("type", "IMAGE")
+            put("workflowId", workflowId)
+        }.toString()
     }
 
-    fun templateFile(id: String): File {
-        require(ID_PATTERN.matches(id)) { "Invalid template id" }
-        return File(templateDirectory, "$id.png")
+    @Synchronized
+    fun deleteAssetFile(workflowId: String, assetId: String) {
+        validateId(workflowId, "Workflow")
+        validateId(assetId, "Asset")
+        File(File(assetDirectory, workflowId), "$assetId.png").takeIf { it.exists() }?.delete()
+    }
+
+    fun assetFile(workflowId: String, id: String): File {
+        validateId(workflowId, "Workflow")
+        validateId(id, "Asset")
+        val current = File(File(assetDirectory, workflowId), "$id.png")
+        if (current.isFile) return current
+        val legacyOwner = runCatching { JSONObject(legacyWorkflowFile.readText()).optString("id", DEFAULT_WORKFLOW_ID) }.getOrNull()
+        return if (workflowId == legacyOwner) File(legacyTemplateDirectory, "$id.png") else current
+    }
+
+    private fun workflowFile(id: String): File {
+        validateId(id, "Workflow")
+        return File(workflowDirectory, "$id.json")
+    }
+
+    private fun ensureStarterWorkflow() {
+        if (workflowDirectory.listFiles { file -> file.isFile && file.extension == "json" }.orEmpty().isNotEmpty()) return
+        val source = if (legacyWorkflowFile.isFile) JSONObject(legacyWorkflowFile.readText()) else JSONObject(STARTER_WORKFLOW)
+        val id = source.optString("id", DEFAULT_WORKFLOW_ID)
+        val normalized = normalizeWorkflow(source, id)
+        writeAtomically(workflowFile(id), normalized.toString().toByteArray())
+    }
+
+    private fun migrateLegacyAssets() {
+        if (!legacyWorkflowFile.isFile) return
+        val sourceWorkflow = JSONObject(legacyWorkflowFile.readText())
+        val legacy = normalizeWorkflow(sourceWorkflow, sourceWorkflow.optString("id", DEFAULT_WORKFLOW_ID))
+        val workflowId = legacy.getString("id")
+        val destination = File(assetDirectory, workflowId).apply { mkdirs() }
+        val assets = legacy.getJSONArray("assets")
+        for (index in 0 until assets.length()) {
+            val asset = assets.getJSONObject(index)
+            if (asset.optString("type", "IMAGE") != "IMAGE") continue
+            val source = File(legacyTemplateDirectory, "${asset.getString("id")}.png")
+            val target = File(destination, source.name)
+            if (source.isFile && !target.exists()) writeAtomically(target, source.readBytes())
+        }
+    }
+
+    private fun normalizeWorkflow(input: JSONObject, pathId: String): JSONObject {
+        validateId(pathId, "Workflow")
+        val bodyId = input.optString("id", pathId)
+        require(bodyId == pathId) { "Workflow path and body IDs must match" }
+        require(input.optInt("schemaVersion", 1) in 1..2) { "Unsupported workflow schema" }
+        val nodes = input.optJSONArray("nodes") ?: error("Workflow nodes are required")
+        val assets = input.optJSONArray("assets") ?: input.optJSONArray("templates") ?: JSONArray()
+
+        for (index in 0 until nodes.length()) {
+            val config = nodes.getJSONObject(index).optJSONObject("config") ?: continue
+            if (!config.has("assetId") && config.has("templateId")) config.put("assetId", config.getString("templateId"))
+            config.remove("templateId")
+        }
+        for (index in 0 until assets.length()) {
+            assets.getJSONObject(index).apply {
+                put("workflowId", pathId)
+                if (!has("type")) put("type", "IMAGE")
+            }
+        }
+
+        return input.apply {
+            put("schemaVersion", 2)
+            put("id", pathId)
+            put("assets", assets)
+            remove("templates")
+        }
+    }
+
+    private fun workflowSummary(workflow: JSONObject): JSONObject {
+        val normalized = normalizeWorkflow(workflow, workflow.getString("id"))
+        return JSONObject().apply {
+            put("id", normalized.getString("id"))
+            put("name", normalized.optString("name", normalized.getString("id")))
+            put("revision", normalized.optInt("revision", 1))
+            put("nodeCount", normalized.getJSONArray("nodes").length())
+            put("assetCount", normalized.getJSONArray("assets").length())
+            put("updatedAt", normalized.optString("updatedAt"))
+        }
+    }
+
+    private fun validateId(id: String, label: String) {
+        require(ID_PATTERN.matches(id)) { "$label ID is invalid" }
     }
 
     private fun writeAtomically(target: File, bytes: ByteArray) {
+        target.parentFile?.mkdirs()
         val temporary = File(target.parentFile, "${target.name}.tmp")
         temporary.writeBytes(bytes)
         check(temporary.renameTo(target) || run { target.delete(); temporary.renameTo(target) }) {
@@ -70,11 +200,12 @@ class AgentStore(context: Context) {
     }
 
     companion object {
+        const val DEFAULT_WORKFLOW_ID = "default-workflow"
         private val ID_PATTERN = Regex("[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}")
         private val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
         private const val MAX_WORKFLOW_BYTES = 2 * 1024 * 1024
-        private const val MAX_TEMPLATE_BYTES = 8 * 1024 * 1024
-        private const val MAX_TEMPLATE_UPLOAD_BYTES = 12 * 1024 * 1024
-        private const val STARTER_WORKFLOW = """{"schemaVersion":1,"id":"default-workflow","name":"Liên Quân reroll","revision":1,"nodes":[{"id":"start","type":"START","position":{"x":80,"y":160},"config":{}},{"id":"success","type":"SUCCESS","position":{"x":420,"y":160},"config":{"message":"Hoàn tất"}}],"edges":[{"id":"start-success","source":"start","target":"success"}],"templates":[],"createdAt":"2026-07-29T00:00:00.000Z","updatedAt":"2026-07-29T00:00:00.000Z"}"""
+        private const val MAX_ASSET_BYTES = 8 * 1024 * 1024
+        private const val MAX_ASSET_UPLOAD_BYTES = 12 * 1024 * 1024
+        private const val STARTER_WORKFLOW = """{"schemaVersion":2,"id":"default-workflow","name":"Liên Quân reroll","revision":1,"nodes":[{"id":"start","type":"START","position":{"x":80,"y":160},"config":{}},{"id":"success","type":"SUCCESS","position":{"x":420,"y":160},"config":{"message":"Hoàn tất"}}],"edges":[{"id":"start-success","source":"start","target":"success"}],"assets":[],"createdAt":"2026-07-29T00:00:00.000Z","updatedAt":"2026-07-29T00:00:00.000Z"}"""
     }
 }

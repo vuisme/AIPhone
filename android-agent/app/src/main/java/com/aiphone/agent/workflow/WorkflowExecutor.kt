@@ -1,5 +1,9 @@
 package com.aiphone.agent.workflow
 
+import com.aiphone.agent.accessibility.AIPhoneAccessibilityService
+import com.aiphone.agent.accessibility.SelectorMatchMode
+import com.aiphone.agent.accessibility.UiBounds
+import com.aiphone.agent.accessibility.UiSelectorSpec
 import com.aiphone.agent.root.RootGateway
 import com.aiphone.agent.root.SafeCommands
 import com.aiphone.agent.storage.AgentStore
@@ -53,7 +57,10 @@ data class RunLogEntry(
     }
 }
 
-class WorkflowExecutor(private val store: AgentStore) {
+class WorkflowExecutor(
+    private val store: AgentStore,
+    private val ensureAccessibility: () -> Boolean = { AIPhoneAccessibilityService.instance != null },
+) {
     private val status = AtomicReference(RunSnapshot())
     private val cancellation = AtomicBoolean(false)
 
@@ -61,7 +68,7 @@ class WorkflowExecutor(private val store: AgentStore) {
     fun start(workflowId: String): RunSnapshot {
         validateWorkflowId(workflowId)
         val initial = beginRun()
-        thread(name = "AIPhone-Workflow", isDaemon = true) { execute(initial.id) }
+        thread(name = "AIPhone-Workflow", isDaemon = true) { execute(initial.id, workflowId) }
         return initial
     }
 
@@ -70,7 +77,7 @@ class WorkflowExecutor(private val store: AgentStore) {
         validateWorkflowId(workflowId)
         require(nodeId.isNotBlank()) { "Node id is required" }
         val initial = beginRun()
-        thread(name = "AIPhone-Node-Test", isDaemon = true) { executeSingleNode(initial.id, nodeId) }
+        thread(name = "AIPhone-Node-Test", isDaemon = true) { executeSingleNode(initial.id, workflowId, nodeId) }
         return initial
     }
 
@@ -97,12 +104,12 @@ class WorkflowExecutor(private val store: AgentStore) {
     }
 
     private fun validateWorkflowId(workflowId: String) {
-        require(workflowId == "default-workflow" || workflowId == "lien-quan-reroll") { "Unknown workflow" }
+        require(store.hasWorkflow(workflowId)) { "Unknown workflow $workflowId" }
     }
 
-    private fun execute(runId: String) {
+    private fun execute(runId: String, workflowId: String) {
         try {
-            val document = JSONObject(store.readWorkflow())
+            val document = JSONObject(store.readWorkflow(workflowId))
             val nodes = document.getJSONArray("nodes").asObjects().associateBy { it.getString("id") }
             val edges = document.getJSONArray("edges").asObjects().map {
                 WorkflowEdgeRoute(
@@ -127,7 +134,7 @@ class WorkflowExecutor(private val store: AgentStore) {
                     check(maximum <= 0 || iteration < maximum) { "Loop limit of $maximum iterations reached" }
                 }
                 status.updateAndGet { it.copy(currentNodeId = nodeId, iteration = iteration) }
-                val outcome = (if (disabled) null else executeNode(node, runId)).also {
+                val outcome = (if (disabled) null else executeNode(node, runId, workflowId)).also {
                     if (!disabled && nodeType == "LOOP") iteration++
                 }
                 if (disabled) appendLog("WARN", "Bỏ qua node đang disable", nodeId)
@@ -148,15 +155,15 @@ class WorkflowExecutor(private val store: AgentStore) {
         }
     }
 
-    private fun executeSingleNode(runId: String, requestedNodeId: String) {
+    private fun executeSingleNode(runId: String, workflowId: String, requestedNodeId: String) {
         try {
-            val document = JSONObject(store.readWorkflow())
+            val document = JSONObject(store.readWorkflow(workflowId))
             val nodes = document.getJSONArray("nodes").asObjects()
             val index = selectSingleNodeIndex(nodes.map { it.getString("id") }, requestedNodeId)
             val node = nodes[index]
             status.updateAndGet { it.copy(currentNodeId = requestedNodeId) }
             appendLog("INFO", "Chạy thử node ${node.getString("type")}", requestedNodeId)
-            val outcome = executeNode(node, runId)
+            val outcome = executeNode(node, runId, workflowId)
             if (cancellation.get()) return finish(RunState.STOPPED, "Đã dừng chạy thử node")
             appendLog("INFO", outcome?.let { "Kết quả: $it" } ?: "Node chạy thành công", requestedNodeId)
             when (node.getString("type")) {
@@ -169,7 +176,7 @@ class WorkflowExecutor(private val store: AgentStore) {
         }
     }
 
-    private fun executeNode(node: JSONObject, runId: String): String? {
+    private fun executeNode(node: JSONObject, runId: String, workflowId: String): String? {
         val type = node.getString("type")
         val config = node.optJSONObject("config") ?: JSONObject()
         return when (type) {
@@ -177,15 +184,10 @@ class WorkflowExecutor(private val store: AgentStore) {
             "DELAY" -> {
                 sleepCancellable(config.optLong("durationMs", 1000)); null
             }
-            "WAIT_IMAGE" -> waitForImage(config)
-            "IF_IMAGE" -> if (findImage(config) != null) "FOUND" else "TIMEOUT"
-            "TAP_IMAGE" -> {
-                val match = findImage(config) ?: return "TIMEOUT"
-                val x = match.x + match.width / 2 + config.optInt("offsetX", 0)
-                val y = match.y + match.height / 2 + config.optInt("offsetY", 0)
-                requireSuccess(RootGateway.tap(x, y).isSuccess, "Tap failed")
-                "FOUND"
-            }
+            "WAIT_IMAGE" -> waitForImage(config, workflowId)
+            "IF_IMAGE" -> if (findImage(config, workflowId) != null) "FOUND" else "TIMEOUT"
+            "TAP_IMAGE" -> tapImage(config, workflowId)
+            "TAP_TEXT" -> tapText(config, workflowId)
             "TAP_POINT" -> {
                 requireSuccess(RootGateway.tap(config.getInt("x"), config.getInt("y")).isSuccess, "Tap failed"); null
             }
@@ -208,21 +210,22 @@ class WorkflowExecutor(private val store: AgentStore) {
         }
     }
 
-    private fun waitForImage(config: JSONObject): String {
+    private fun waitForImage(config: JSONObject, workflowId: String): String {
         val timeout = config.optLong("timeoutMs", 30_000).coerceIn(100, 600_000)
         val interval = config.optLong("pollIntervalMs", 500).coerceIn(100, 10_000)
         val deadline = System.currentTimeMillis() + timeout
         while (!cancellation.get() && System.currentTimeMillis() < deadline) {
-            if (findImage(config) != null) return "FOUND"
+            if (findImage(config, workflowId) != null) return "FOUND"
             sleepCancellable(interval)
         }
         return "TIMEOUT"
     }
 
-    private fun findImage(config: JSONObject): Match? {
-        val templateId = config.getString("templateId")
-        val file = store.templateFile(templateId)
-        require(file.isFile) { "Template $templateId is missing" }
+    private fun findImage(config: JSONObject, workflowId: String): Match? {
+        val assetId = config.optString("assetId").ifBlank { config.optString("templateId") }
+        require(assetId.isNotBlank()) { "Image Asset is required" }
+        val file = store.assetFile(workflowId, assetId)
+        require(file.isFile) { "Image Asset $assetId is missing" }
         val regionJson = config.optJSONObject("searchRegion")
         val region = regionJson?.let {
             NormalizedRegion(it.getDouble("x"), it.getDouble("y"), it.getDouble("width"), it.getDouble("height"))
@@ -232,6 +235,52 @@ class WorkflowExecutor(private val store: AgentStore) {
             file,
             config.optDouble("threshold", 0.88).coerceIn(0.5, 1.0),
             region,
+        )
+    }
+
+    private fun tapImage(config: JSONObject, workflowId: String): String = TapImageRunner(
+        findImage = { findImage(config, workflowId) },
+        tap = RootGateway::tap,
+        delay = ::sleepCancellable,
+        log = { level, message -> appendLog(level, message) },
+        isCancelled = cancellation::get,
+    ).run(
+        TapImageOptions(
+            offsetX = config.optInt("offsetX", 0),
+            offsetY = config.optInt("offsetY", 0),
+            maxAttempts = config.optInt("tapAttempts", 2).coerceIn(1, 5),
+            verificationDelayMs = config.optLong("tapVerificationDelayMs", 700).coerceIn(100, 5_000),
+            verifyAfterTap = config.optBoolean("verifyTap", true),
+        ),
+    )
+
+    private fun tapText(config: JSONObject, workflowId: String): String {
+        check(ensureAccessibility()) { "AIPhone UI Inspector is not ready" }
+        val assetId = config.getString("assetId")
+        val assets = JSONObject(store.readWorkflow(workflowId)).getJSONArray("assets")
+        val asset = (0 until assets.length()).map { assets.getJSONObject(it) }
+            .singleOrNull { it.getString("id") == assetId && it.optString("type") == "UI_SELECTOR" }
+            ?: error("UI selector Asset $assetId is missing")
+        val selectorJson = asset.getJSONObject("selector")
+        val boundsJson = selectorJson.optJSONObject("bounds")
+        val selector = UiSelectorSpec(
+            text = selectorJson.optString("text").ifBlank { null },
+            contentDescription = selectorJson.optString("contentDescription").ifBlank { null },
+            resourceId = selectorJson.optString("resourceId").ifBlank { null },
+            className = selectorJson.optString("className").ifBlank { null },
+            packageName = selectorJson.optString("packageName").ifBlank { null },
+            bounds = boundsJson?.let { UiBounds(it.getInt("left"), it.getInt("top"), it.getInt("right"), it.getInt("bottom")) },
+            matchMode = if (selectorJson.optString("matchMode") == "CONTAINS") SelectorMatchMode.CONTAINS else SelectorMatchMode.EXACT,
+        )
+        return TapTextRunner(
+            click = { AIPhoneAccessibilityService.instance?.click(selector) ?: error("AIPhone UI Inspector disconnected") },
+            tap = RootGateway::tap,
+            delay = ::sleepCancellable,
+            log = { level, message -> appendLog(level, message) },
+            isCancelled = cancellation::get,
+        ).run(
+            timeoutMs = config.optLong("timeoutMs", 10_000),
+            pollIntervalMs = config.optLong("pollIntervalMs", 400),
         )
     }
 

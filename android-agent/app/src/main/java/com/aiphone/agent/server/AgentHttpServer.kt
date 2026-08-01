@@ -3,6 +3,8 @@ package com.aiphone.agent.server
 import android.content.Context
 import android.os.Build
 import com.aiphone.agent.BuildConfig
+import com.aiphone.agent.accessibility.AIPhoneAccessibilityService
+import com.aiphone.agent.accessibility.AccessibilityController
 import com.aiphone.agent.root.RootGateway
 import com.aiphone.agent.root.SafeCommands
 import com.aiphone.agent.storage.AgentStore
@@ -90,16 +92,43 @@ class AgentHttpServer(
             if (request.path.startsWith("/api/") && request.headers["x-aiphone-token"] != store.accessToken()) {
                 return HttpResponse.json(401, errorJson("UNAUTHORIZED", "Pairing token is missing or invalid"))
             }
+            val workflowPath = WORKFLOW_PATH.matchEntire(request.path)
+            val assetPath = WORKFLOW_ASSET_PATH.matchEntire(request.path)
             when {
                 request.method == "GET" && request.path == "/api/device" -> deviceHealth()
                 request.method == "POST" && request.path == "/api/screenshots" -> HttpResponse(200, "image/png", RootGateway.captureScreen())
+                request.method == "POST" && request.path == "/api/ui-hierarchy" -> uiHierarchy()
+                request.method == "GET" && request.path == "/api/workflows" -> HttpResponse(200, "application/json; charset=utf-8", store.listWorkflows().toByteArray())
+                request.method == "POST" && request.path == "/api/workflows" -> HttpResponse(200, "application/json; charset=utf-8", store.createWorkflow(request.body).toByteArray())
                 request.method == "GET" && request.path == "/api/workflows/default" -> HttpResponse(200, "application/json; charset=utf-8", store.readWorkflow().toByteArray())
-                request.method == "PUT" && request.path == "/api/workflows/default" -> HttpResponse(200, "application/json; charset=utf-8", store.saveWorkflow(request.body).toByteArray())
+                request.method == "PUT" && request.path == "/api/workflows/default" -> HttpResponse(200, "application/json; charset=utf-8", store.saveWorkflow(AgentStore.DEFAULT_WORKFLOW_ID, request.body).toByteArray())
+                assetPath != null && request.method == "PUT" -> {
+                    val workflowId = assetPath.groupValues[1]
+                    val pathId = assetPath.groupValues[2]
+                    val bodyId = JSONObject(request.body.toString(Charsets.UTF_8)).getJSONObject("record").getString("id")
+                    require(pathId == bodyId) { "Asset path and body IDs must match" }
+                    HttpResponse(200, "application/json; charset=utf-8", store.saveImageAsset(workflowId, request.body).toByteArray())
+                }
+                assetPath != null && request.method == "GET" -> {
+                    val file = store.assetFile(assetPath.groupValues[1], assetPath.groupValues[2])
+                    require(file.isFile) { "Image Asset is missing" }
+                    HttpResponse(200, "image/png", file.readBytes())
+                }
+                assetPath != null && request.method == "DELETE" -> {
+                    store.deleteAssetFile(assetPath.groupValues[1], assetPath.groupValues[2])
+                    HttpResponse(204, "text/plain", byteArrayOf())
+                }
+                workflowPath != null && request.method == "GET" -> HttpResponse(200, "application/json; charset=utf-8", store.readWorkflow(workflowPath.groupValues[1]).toByteArray())
+                workflowPath != null && request.method == "PUT" -> HttpResponse(200, "application/json; charset=utf-8", store.saveWorkflow(workflowPath.groupValues[1], request.body).toByteArray())
+                workflowPath != null && request.method == "DELETE" -> {
+                    store.deleteWorkflow(workflowPath.groupValues[1])
+                    HttpResponse(204, "text/plain", byteArrayOf())
+                }
                 request.method == "PUT" && request.path.startsWith("/api/templates/") -> {
                     val pathId = request.path.substringAfterLast('/')
                     val bodyId = JSONObject(request.body.toString(Charsets.UTF_8)).getJSONObject("record").getString("id")
                     require(pathId == bodyId) { "Template path and body IDs must match" }
-                    HttpResponse(200, "application/json; charset=utf-8", store.saveTemplate(request.body).toByteArray())
+                    HttpResponse(200, "application/json; charset=utf-8", store.saveImageAsset(AgentStore.DEFAULT_WORKFLOW_ID, request.body).toByteArray())
                 }
                 request.method == "POST" && request.path == "/api/runs" -> {
                     val workflowId = JSONObject(request.body.toString(Charsets.UTF_8)).optString("workflowId", "default-workflow")
@@ -136,8 +165,17 @@ class AgentHttpServer(
             put("displayWidth", metrics.widthPixels)
             put("displayHeight", metrics.heightPixels)
             put("cloneUserId", SafeCommands.CLONE_USER_ID)
+            put("accessibilityReady", AccessibilityController.isReady())
         }
         return HttpResponse.json(body = body)
+    }
+
+    private fun uiHierarchy(): HttpResponse {
+        check(AccessibilityController.ensureEnabled(context)) {
+            "AIPhone UI Inspector was enabled but is not ready yet; retry in a moment"
+        }
+        val service = AIPhoneAccessibilityService.instance ?: error("AIPhone UI Inspector is unavailable")
+        return HttpResponse.json(body = service.hierarchyJson())
     }
 
     private fun staticAsset(rawPath: String): HttpResponse {
@@ -221,6 +259,8 @@ class AgentHttpServer(
     }
 
     companion object {
+        private val WORKFLOW_PATH = Regex("^/api/workflows/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})$")
+        private val WORKFLOW_ASSET_PATH = Regex("^/api/workflows/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})/assets/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})$")
         private const val PORT = 8765
         private const val MAX_BODY_BYTES = 16 * 1024 * 1024
         private const val MAX_HEADER_LINE = 16 * 1024

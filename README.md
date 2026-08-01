@@ -5,8 +5,10 @@ AIPhone is a rooted Android visual-automation agent with a browser-based no-code
 ## MVP capabilities
 
 - Drag-and-drop workflow nodes with branches and loops.
-- Capture the current Android screen and crop native-pixel PNG templates in the browser.
-- Replace templates without rebuilding the APK.
+- Manage multiple workflows, each with its own reusable Asset library.
+- Capture the current Android screen and crop native-pixel PNG Assets in the browser.
+- Replace image Assets without rebuilding the APK.
+- Inspect accessible Android/WebView text over the live screenshot and create `TAP_TEXT` nodes visually.
 - Run Studio independently on the PC and choose a connected USB phone by ADB serial.
 - Play, disable or delete a node directly from its card; double-click an edge to remove it.
 - Execute workflows on the phone after the computer disconnects.
@@ -43,7 +45,7 @@ Future versions use the same application ID and GitHub signing key. Install them
 .\adb-tool\adb.exe install -r AIPhone-v0.1.5.apk
 ```
 
-Do not uninstall the existing app if its local workflows/templates must be preserved.
+Do not uninstall the existing app if its local workflows and Assets must be preserved.
 
 ## Start Studio with Docker
 
@@ -90,7 +92,7 @@ The PC host creates a separate ADB forward for the selected serial. The Agent re
 
 ## Repository layout
 
-- `studio/web/` - React no-code editor and template crop UI.
+- `studio/web/` - React no-code editor, Workflow Manager, Asset Library and Capture Lab.
 - `studio/host/` - loopback-only Studio server and per-device USB ADB bridge.
 - `studio/` - Docker, Compose and one-command launchers for the complete PC Studio.
 - `android-agent/` - Kotlin Android Agent, local API and workflow executor.

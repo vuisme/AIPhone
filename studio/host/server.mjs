@@ -17,7 +17,11 @@ const SECURITY_HEADERS = {
 const API_PATHS = [
   /^\/api\/device$/,
   /^\/api\/screenshots$/,
+  /^\/api\/ui-hierarchy$/,
+  /^\/api\/workflows$/,
   /^\/api\/workflows\/default$/,
+  /^\/api\/workflows\/[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/,
+  /^\/api\/workflows\/[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}\/assets\/[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/,
   /^\/api\/templates\/[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/,
   /^\/api\/runs$/,
   /^\/api\/runs\/current$/,
@@ -54,7 +58,7 @@ export function bridgeCorsHeaders(origin) {
   if (!BRIDGE_ORIGINS.has(origin)) return null
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-AIPhone-Token',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',

@@ -1,4 +1,4 @@
-import type { TemplateRecord, WorkflowDocument } from '../contracts/workflow'
+import type { ImageAssetRecord, WorkflowDocument, WorkflowSummary } from '../contracts/workflow'
 
 const TOKEN_KEY = 'aiphone.pairing-token'
 const DEVICE_KEY = 'aiphone.adb-serial'
@@ -68,6 +68,7 @@ export interface DeviceHealth {
   displayWidth: number
   displayHeight: number
   cloneUserId: number
+  accessibilityReady: boolean
 }
 
 export interface RunStatus {
@@ -88,9 +89,31 @@ export interface RunLogEntry {
   nodeId?: string
 }
 
-export interface TemplateUpload {
-  record: TemplateRecord
+export interface AssetUpload {
+  record: ImageAssetRecord
   imageBase64: string
+}
+
+export interface UiHierarchyNode {
+  id: number
+  parentId?: number
+  text: string
+  contentDescription: string
+  resourceId: string
+  className: string
+  packageName: string
+  clickable: boolean
+  enabled: boolean
+  visible: boolean
+  bounds: { left: number; top: number; right: number; bottom: number }
+}
+
+export interface UiHierarchySnapshot {
+  capturedAt: string
+  packageName: string
+  nodes: UiHierarchyNode[]
+  xml: string
+  surfaceOnly: boolean
 }
 
 export const bridgeApi = {
@@ -101,11 +124,17 @@ export const bridgeApi = {
   },
 }
 
-async function parseJson<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const body = await response.text()
-    throw new Error(body || `HTTP ${response.status}`)
+export function apiErrorMessage(body: string, status: number): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: string | { message?: string } }
+    return (typeof parsed.error === 'string' ? parsed.error : parsed.error?.message) || `HTTP ${status}`
+  } catch {
+    return body || `HTTP ${status}`
   }
+}
+
+async function parseJson<T>(response: Response): Promise<T> {
+  if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
   return response.json() as Promise<T>
 }
 
@@ -116,20 +145,33 @@ export const agentApi = {
 
   async captureScreenshot(): Promise<Blob> {
     const response = await agentFetch('/api/screenshots', { method: 'POST' })
-    if (!response.ok) throw new Error(await response.text())
+    if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
     if (!response.headers.get('content-type')?.startsWith('image/')) {
       throw new Error('Agent chưa kết nối hoặc không trả về ảnh')
     }
     return response.blob()
   },
 
-  async getWorkflow(): Promise<WorkflowDocument> {
-    return parseJson(await agentFetch('/api/workflows/default'))
+  async getWorkflows(): Promise<WorkflowSummary[]> {
+    const result = await parseJson<{ workflows: WorkflowSummary[] }>(await agentFetch('/api/workflows'))
+    return result.workflows
+  },
+
+  async getWorkflow(workflowId: string): Promise<WorkflowDocument> {
+    return parseJson(await agentFetch(`/api/workflows/${encodeURIComponent(workflowId)}`))
+  },
+
+  async createWorkflow(workflow: WorkflowDocument): Promise<WorkflowDocument> {
+    return parseJson(await agentFetch('/api/workflows', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(workflow),
+    }))
   },
 
   async saveWorkflow(workflow: WorkflowDocument): Promise<WorkflowDocument> {
     return parseJson(
-      await agentFetch('/api/workflows/default', {
+      await agentFetch(`/api/workflows/${encodeURIComponent(workflow.id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(workflow),
@@ -137,14 +179,34 @@ export const agentApi = {
     )
   },
 
-  async uploadTemplate(upload: TemplateUpload): Promise<TemplateRecord> {
+  async deleteWorkflow(workflowId: string): Promise<void> {
+    const response = await agentFetch(`/api/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' })
+    if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
+  },
+
+  async uploadAsset(upload: AssetUpload): Promise<ImageAssetRecord> {
     return parseJson(
-      await agentFetch(`/api/templates/${encodeURIComponent(upload.record.id)}`, {
+      await agentFetch(`/api/workflows/${encodeURIComponent(upload.record.workflowId)}/assets/${encodeURIComponent(upload.record.id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(upload),
       }),
     )
+  },
+
+  async deleteAssetFile(workflowId: string, assetId: string): Promise<void> {
+    const response = await agentFetch(`/api/workflows/${encodeURIComponent(workflowId)}/assets/${encodeURIComponent(assetId)}`, { method: 'DELETE' })
+    if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
+  },
+
+  async getAssetImage(workflowId: string, assetId: string): Promise<Blob> {
+    const response = await agentFetch(`/api/workflows/${encodeURIComponent(workflowId)}/assets/${encodeURIComponent(assetId)}`)
+    if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
+    return response.blob()
+  },
+
+  async getUiHierarchy(): Promise<UiHierarchySnapshot> {
+    return parseJson(await agentFetch('/api/ui-hierarchy', { method: 'POST' }))
   },
 
   async startRun(workflowId: string): Promise<RunStatus> {

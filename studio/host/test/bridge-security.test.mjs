@@ -13,10 +13,18 @@ async function withServer(options, run) {
   }
 }
 
-test('agentPathFromBridgeUrl allows only a fixed device API route', () => {
+test('agentPathFromBridgeUrl allows only fixed device API routes', () => {
   assert.equal(
     agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/workflows/default?revision=3', 'c421ff5b'),
     '/api/workflows/default?revision=3',
+  )
+  assert.equal(
+    agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/workflows/reward-flow/assets/skip-button', 'c421ff5b'),
+    '/api/workflows/reward-flow/assets/skip-button',
+  )
+  assert.equal(
+    agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/ui-hierarchy', 'c421ff5b'),
+    '/api/ui-hierarchy',
   )
 })
 

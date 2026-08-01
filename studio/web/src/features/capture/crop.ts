@@ -10,7 +10,8 @@ export interface Size {
 
 export interface Rect extends Point, Size {}
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value))
 
 export function clampSelection(start: Point, end: Point, bounds: Size): Rect {
   const startX = clamp(start.x, 0, bounds.width)

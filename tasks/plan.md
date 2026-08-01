@@ -84,6 +84,16 @@ Checkpoint: Studio at `127.0.0.1:4173` selects the connected phone, edits workfl
 
 Checkpoint: `studio/start-docker.cmd` starts the published UI container and local USB bridge, and Studio remains reachable only through PC loopback.
 
+### Phase 7: Workflow Assets and UI Inspector
+
+- Task 21: Define the workflow-scoped Asset contract and legacy template migration.
+- Task 22: Add multi-workflow persistence, CRUD API and workflow-aware execution.
+- Task 23: Add the accessibility hierarchy service, selector Assets and `TAP_TEXT` execution.
+- Task 24: Add Workflow Manager, Asset Library and Capture Lab text-inspector mode.
+- Task 25: Verify, rebuild and restart the local Docker Studio; publish the upgradeable Agent APK.
+
+Checkpoint: Studio manages multiple workflows and their Assets, can create text-click nodes from a live hierarchy, and runs through the selected phone/workflow.
+
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |

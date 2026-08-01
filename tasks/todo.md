@@ -99,3 +99,28 @@
   - Acceptance: GHCR exposes `ghcr.io/vuisme/aiphone-studio:latest` and the launcher pulls it successfully
   - Verify: green container workflow and local health checks on ports `4173` and `4174`
   - Files: container workflow and release metadata
+
+- [ ] Task 21: Define workflow-scoped Assets and migration
+  - Acceptance: new JSON uses `assets/assetId`; old `templates/templateId` loads without data loss
+  - Verify: contract migration and validation tests pass
+  - Files: Studio contract, Android storage contract, spec/ADR
+
+- [ ] Task 22: Add multi-workflow persistence and CRUD
+  - Acceptance: users can list, create, rename, select and delete workflows; the selected workflow is executed
+  - Verify: API/storage tests and Studio state tests pass
+  - Files: Android store/server/executor, Studio API client and workflow manager
+
+- [ ] Task 23: Add accessibility selector execution
+  - Acceptance: Agent exposes hierarchy XML/structured nodes and `TAP_TEXT` clicks an accessible node or its bounds
+  - Verify: selector matching/unit tests and Android CI pass
+  - Files: accessibility service, manifest, executor and tests
+
+- [ ] Task 24: Add Asset Library and Capture Lab inspector
+  - Acceptance: Assets are grouped by workflow; images can be replaced; screenshot UI toggles to visual text inspection
+  - Verify: Studio tests, typecheck and build pass
+  - Files: Asset components, capture components, App integration and styles
+
+- [ ] Task 25: Deliver the local test build
+  - Acceptance: Docker Studio and USB bridge restart cleanly; signed APK is upgradeable
+  - Verify: health endpoints, GitHub Actions and `adb install -r`
+  - Files: changelog, CI artifacts and runtime deployment

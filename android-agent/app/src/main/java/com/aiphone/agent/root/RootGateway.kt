@@ -10,9 +10,11 @@ data class CommandResult(val exitCode: Int, val output: ByteArray) {
 
 object RootGateway {
     @Volatile private var cachedRoot: Boolean? = null
+    @Volatile private var cachedPrimaryDisplayId: String? = null
 
     fun invalidateRootState() {
         cachedRoot = null
+        cachedPrimaryDisplayId = null
     }
 
     fun isRootGranted(): Boolean {
@@ -23,11 +25,20 @@ object RootGateway {
     }
 
     fun captureScreen(): ByteArray {
-        val rooted = runRoot(listOf("screencap", "-p"), timeoutSeconds = 8, mergeError = false)
+        val captureArgs = primaryDisplayId()?.let { listOf("screencap", "-d", it, "-p") }
+            ?: listOf("screencap", "-p")
+        val rooted = runRoot(captureArgs, timeoutSeconds = 8, mergeError = false)
         if (rooted.isSuccess && rooted.output.isNotEmpty()) return rooted.output
-        val direct = runProcess(listOf("screencap", "-p"), timeoutSeconds = 8, mergeError = false)
+        val direct = runProcess(captureArgs, timeoutSeconds = 8, mergeError = false)
         check(direct.isSuccess && direct.output.isNotEmpty()) { "Screenshot failed: ${direct.text}" }
         return direct.output
+    }
+
+    private fun primaryDisplayId(): String? {
+        cachedPrimaryDisplayId?.let { return it }
+        val displays = runRoot(listOf("dumpsys", "SurfaceFlinger", "--display-id"), timeoutSeconds = 5)
+        if (!displays.isSuccess) return null
+        return PrimaryDisplaySelector.fromSurfaceFlinger(displays.text)?.also { cachedPrimaryDisplayId = it }
     }
 
     fun tap(x: Int, y: Int): CommandResult {

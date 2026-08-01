@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_description">Cho phép AIPhone đọc cây UI và bấm node Android hoặc WebView do người dùng chọn.</string>
+</resources>

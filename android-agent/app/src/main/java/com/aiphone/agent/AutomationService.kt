@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import com.aiphone.agent.server.AgentHttpServer
 import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.workflow.WorkflowExecutor
+import com.aiphone.agent.accessibility.AccessibilityController
 
 class AutomationService : Service() {
     private var server: AgentHttpServer? = null
@@ -35,7 +36,7 @@ class AutomationService : Service() {
         startForeground(NOTIFICATION_ID, notification)
 
         val store = AgentStore(this)
-        val executor = WorkflowExecutor(store)
+        val executor = WorkflowExecutor(store) { AccessibilityController.ensureEnabled(this) }
         server = AgentHttpServer(this, store, executor).also { it.start() }
     }
 
@@ -73,4 +74,3 @@ class AutomationService : Service() {
         private const val NOTIFICATION_ID = 1201
     }
 }
-

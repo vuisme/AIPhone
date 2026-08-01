@@ -89,7 +89,7 @@ Errors use `{ "error": { "code": "...", "message": "..." } }`. Authentication fa
 
 - Docker Compose runs PostgreSQL 17 and Redis 8 on loopback-only host ports plus the existing static Studio container.
 - The Windows USB bridge remains native and connects to those local services.
-- `start-docker.ps1` creates `.runtime/studio.env` once with random database, Redis, session and credential secrets, then reuses it across upgrades.
+- `start-docker.ps1` creates `.runtime/studio.env` once with random database, Redis and credential-encryption secrets, then reuses it across upgrades.
 - Named Docker volumes preserve PostgreSQL and Redis data across image/container replacement.
 
 ## Migration
@@ -112,4 +112,3 @@ After the first administrator is created, legacy workflows and PNG Assets in `~/
 5. A user can use owned or granted devices, while the browser never receives a stored pairing token.
 6. Disabling a user revokes active sessions immediately.
 7. No committed file, API response or log contains generated secrets.
-

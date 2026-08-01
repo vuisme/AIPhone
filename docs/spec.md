@@ -119,7 +119,7 @@ The Agent binds to device loopback only. The standalone PC Studio Host discovers
 .\adb-tool\adb.exe forward tcp:8765 tcp:8765
 ```
 
-Standalone Studio is available at `http://127.0.0.1:4173`. The device picker shows serial, model and connection state from ADB. Pairing tokens remain scoped to the selected device and current browser session.
+Standalone Studio is available at `http://127.0.0.1:4173`. The device picker shows only devices the signed-in account may use, including serial, model and connection state from ADB. Pairing tokens remain scoped to the exact device, are encrypted persistently by the host and are never returned to browser JavaScript.
 
 ### LAN, future
 

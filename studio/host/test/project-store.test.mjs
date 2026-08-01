@@ -30,6 +30,14 @@ test('ProjectStore persists workflows independently of a phone', async () => {
   assert.equal((await store.listWorkflows())[0].id, 'fleet-test')
 })
 
+test('ProjectStore accepts an already parsed workflow object during legacy migration', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiphone-store-'))
+  const store = new ProjectStore(root)
+  await store.createWorkflow(workflow('object-import'))
+
+  assert.equal((await store.readWorkflow('object-import')).id, 'object-import')
+})
+
 test('ProjectStore computes the trusted PNG SHA-256', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aiphone-store-'))
   const store = new ProjectStore(root)
@@ -55,4 +63,3 @@ test('ProjectStore rejects invalid IDs and non-PNG Asset bytes', async () => {
     imageBase64: Buffer.from('not png').toString('base64'),
   }), /PNG/)
 })
-

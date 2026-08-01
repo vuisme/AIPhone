@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Boxes, Camera, CircleStop, CloudOff, Cpu, ListTree, Monitor, Play, RefreshCw, Save, Smartphone, Usb, Workflow, X } from 'lucide-react'
+import { Boxes, Camera, CircleStop, CloudOff, Cpu, ListTree, LogOut, Monitor, Play, RefreshCw, Save, ShieldCheck, Smartphone, Usb, Workflow, X } from 'lucide-react'
 import {
   agentApi,
   bridgeApi,
+  credentialApi,
   getAgentDeviceSerial,
   hasAgentToken,
+  isPairingError,
   isStandaloneStudio,
   projectApi,
   setAgentDeviceSerial,
@@ -13,9 +15,11 @@ import {
   type AssetUpload,
   type DeviceHealth,
   type RunStatus,
+  type StudioUser,
 } from './api/client'
 import { createStarterWorkflow, normalizeWorkflow, validateWorkflow, type AssetRecord, type ImageAssetRecord, type UiSelectorAssetRecord, type WorkflowDocument, type WorkflowNode } from './contracts/workflow'
 import { AssetLibrary } from './features/assets/AssetLibrary'
+import { AdminPanel } from './features/admin/AdminPanel'
 import { CaptureLab } from './features/capture/CaptureLab'
 import { blobToDataUrl, deployWorkflow, type DeploymentDependencies } from './features/fleet/deployment'
 import { FleetDeployBar, type FleetDeviceProgress } from './features/fleet/FleetDeployBar'
@@ -43,7 +47,7 @@ async function importDeviceWorkflows(serial: string): Promise<WorkflowDocument[]
   const imported: WorkflowDocument[] = []
   for (const summary of summaries) {
     let workflow = normalizeWorkflow(await agentApi.getWorkflow(summary.id, serial))
-    await projectApi.saveWorkflow(workflow)
+    await projectApi.createWorkflow(workflow)
     for (const asset of workflow.assets) {
       if (asset.type !== 'IMAGE') continue
       const image = await agentApi.getAssetImage(workflow.id, asset.id, serial)
@@ -71,11 +75,11 @@ function loadLocalWorkflows(): WorkflowDocument[] {
   return [createStarterWorkflow()]
 }
 
-export function App() {
+export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Promise<void> | void }) {
   const standalone = useMemo(isStandaloneStudio, [])
   const [workflows, setWorkflows] = useState<WorkflowDocument[]>(loadLocalWorkflows)
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(() => localStorage.getItem(LOCAL_SELECTED_KEY) || loadLocalWorkflows()[0]?.id || 'default-workflow')
-  const [workspace, setWorkspace] = useState<'STUDIO' | 'WORKFLOWS' | 'ASSETS'>('STUDIO')
+  const [workspace, setWorkspace] = useState<'STUDIO' | 'WORKFLOWS' | 'ASSETS' | 'ADMIN'>('STUDIO')
   const [device, setDevice] = useState<DeviceHealth>()
   const [adbDevices, setAdbDevices] = useState<AdbDevice[]>([])
   const [selectedSerial, setSelectedSerial] = useState(getAgentDeviceSerial)
@@ -98,7 +102,9 @@ export function App() {
 
   const workflow = workflows.find((candidate) => candidate.id === selectedWorkflowId) ?? workflows[0]
   const validation = useMemo(() => validateWorkflow(workflow), [workflow])
-  const isPaired = hasAgentToken()
+  const isPaired = standalone ? Boolean(adbDevices.find((candidate) => candidate.serial === selectedSerial)?.paired) : hasAgentToken()
+  const selectedCanPair = standalone ? Boolean(adbDevices.find((candidate) => candidate.serial === selectedSerial)?.canPair) : true
+  const deviceIsPaired = (serial: string) => standalone ? Boolean(adbDevices.find((candidate) => candidate.serial === serial)?.paired) : hasAgentToken(serial)
 
   const replaceWorkflow = useCallback((next: WorkflowDocument) => {
     setWorkflows((current) => current.map((candidate) => candidate.id === next.id ? next : candidate))
@@ -106,7 +112,7 @@ export function App() {
 
   const scanDevices = useCallback(async () => {
     setIsScanning(true)
-    try { setAdbDevices(await bridgeApi.getDevices()) }
+    try { setAdbDevices(await bridgeApi.getDevices()); setConnectionRevision((value) => value + 1) }
     catch (reason) { setNotice(reason instanceof Error ? `Không thể quét USB: ${reason.message}` : 'Không thể quét thiết bị USB') }
     finally { setIsScanning(false) }
   }, [])
@@ -136,7 +142,7 @@ export function App() {
   }, [standalone])
 
   useEffect(() => {
-    if ((standalone && (!selectedSerial || hostIsEmpty === undefined)) || !hasAgentToken()) {
+    if ((standalone && (!selectedSerial || hostIsEmpty === undefined)) || !isPaired) {
       setDevice(undefined)
       return
     }
@@ -162,15 +168,17 @@ export function App() {
           setWorkflows(normalized.length ? normalized : [createStarterWorkflow()])
           setSelectedWorkflowId((current) => normalized.some((item) => item.id === current) ? current : normalized[0]?.id ?? 'default-workflow')
         }
-      } catch {
+      } catch (reason) {
         if (cancelled) return
         setDevice(undefined)
-        setShowPairing(true)
+        if (isPairingError(reason) && selectedCanPair) setShowPairing(true)
+        else if (isPairingError(reason)) setNotice('Pairing token của thiết bị không còn hợp lệ. Hãy liên hệ chủ thiết bị hoặc quản trị viên để pairing lại.')
+        else setNotice(reason instanceof Error ? `Không thể kết nối Agent: ${reason.message}` : 'Không thể kết nối Agent')
       }
     }
     void load()
     return () => { cancelled = true }
-  }, [connectionRevision, hostIsEmpty, selectedSerial, standalone])
+  }, [connectionRevision, hostIsEmpty, isPaired, selectedSerial, standalone])
 
   useEffect(() => {
     localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(workflows))
@@ -309,7 +317,7 @@ export function App() {
     }
     setFleetProgress((current) => ({ ...current, ...Object.fromEntries(serials.map((serial) => [serial, { state: 'SYNCING' as const, message: 'Đang so sánh Asset...' }])) }))
     const results = await Promise.allSettled(serials.map(async (serial) => {
-      if (!hasAgentToken(serial)) throw new Error('Chưa có pairing token cho máy này')
+      if (!deviceIsPaired(serial)) throw new Error('Thiết bị chưa được pairing hoặc chưa được cấp quyền')
       let result
       if (standalone) {
         result = await deployWorkflow(workflow, serial, deploymentDependencies, startAfterDeploy)
@@ -358,7 +366,34 @@ export function App() {
     setRun({ id: 'idle', state: 'IDLE', iteration: 0 })
     setConnectionRevision((value) => value + 1)
   }
-  const connectWithToken = () => { setAgentToken(pairingInput, selectedSerial); setPairingInput(''); setShowPairing(false); setConnectionRevision((value) => value + 1) }
+  const connectWithToken = async () => {
+    try {
+      if (standalone) {
+        await credentialApi.save(pairingInput, selectedSerial)
+        setAdbDevices((current) => current.map((candidate) => candidate.serial === selectedSerial ? { ...candidate, claimed: true, paired: true, authorized: true, canPair: true } : candidate))
+      } else setAgentToken(pairingInput, selectedSerial)
+      setPairingInput('')
+      setShowPairing(false)
+      setConnectionRevision((value) => value + 1)
+      setNotice('Đã mã hóa và lưu pairing token cho thiết bị này')
+    } catch (reason) {
+      setNotice(reason instanceof Error ? `Pairing thất bại: ${reason.message}` : 'Pairing thất bại')
+    }
+  }
+  const forgetCredential = async () => {
+    if (!selectedSerial || !window.confirm('Quên pairing token của thiết bị này? Workflow và quyền cấp vẫn được giữ.')) return
+    try {
+      if (standalone) {
+        await credentialApi.forget(selectedSerial)
+        setAdbDevices((current) => current.map((candidate) => candidate.serial === selectedSerial ? { ...candidate, paired: false } : candidate))
+      } else setAgentToken('', selectedSerial)
+      setDevice(undefined)
+      setShowPairing(true)
+      setNotice('Đã xóa pairing token đã mã hóa')
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : 'Không thể quên pairing token')
+    }
+  }
   const stopRun = async () => {
     const running = Object.entries(fleetProgress).filter(([, value]) => value.state === 'RUNNING').map(([serial]) => serial)
     const serials = running.length ? running : [selectedSerial].filter(Boolean)
@@ -376,9 +411,9 @@ export function App() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-block"><div className="brand-mark">AI</div><div><span>ROOTED ANDROID AUTOMATION</span><h1>Phone Studio</h1></div></div>
-        <nav className="workspace-nav" aria-label="Khu vực làm việc"><button className={workspace === 'STUDIO' ? 'active' : ''} onClick={() => setWorkspace('STUDIO')}><ListTree size={16} /> Studio</button><button className={workspace === 'WORKFLOWS' ? 'active' : ''} onClick={() => setWorkspace('WORKFLOWS')}><Workflow size={16} /> Workflows</button><button className={workspace === 'ASSETS' ? 'active' : ''} onClick={() => setWorkspace('ASSETS')}><Boxes size={16} /> Assets</button></nav>
+        <nav className="workspace-nav" aria-label="Khu vực làm việc"><button className={workspace === 'STUDIO' ? 'active' : ''} onClick={() => setWorkspace('STUDIO')}><ListTree size={16} /> Studio</button><button className={workspace === 'WORKFLOWS' ? 'active' : ''} onClick={() => setWorkspace('WORKFLOWS')}><Workflow size={16} /> Workflows</button><button className={workspace === 'ASSETS' ? 'active' : ''} onClick={() => setWorkspace('ASSETS')}><Boxes size={16} /> Assets</button>{standalone && user.role === 'ADMIN' && <button className={workspace === 'ADMIN' ? 'active' : ''} onClick={() => setWorkspace('ADMIN')}><ShieldCheck size={16} /> Quản trị</button>}</nav>
         <button className="device-strip" onClick={() => { if (standalone) { setShowDevices(true); void scanDevices() } else setShowPairing(true) }} title={standalone ? 'Chọn điện thoại USB' : 'Ghép nối Android Agent'}><div className={`connection-dot ${device ? 'online' : ''}`} /><div><span>{standalone && targetSerials.length > 1 ? `${targetSerials.length} FLEET TARGETS` : device ? 'AGENT ONLINE' : (selectedSerial ? 'USB ĐÃ CHỌN' : 'CHƯA CHỌN MÁY')}</span><strong>{device ? `${device.model} · Android ${device.androidVersion}` : (selectedAdbDevice?.model ? `${selectedAdbDevice.model} · ${selectedSerial}` : selectedSerial || 'Bấm để quét USB')}</strong></div>{selectedSerial ? <Usb size={18} /> : <CloudOff size={18} />}</button>
-        <div className="top-actions">{standalone && <button className="toolbar-button" onClick={() => setShowLiveView(true)} disabled={!selectedSerial}><Monitor size={17} /> Live View</button>}<button className="toolbar-button" onClick={() => setCaptureTarget({ workflowId: workflow.id })} disabled={(standalone && !selectedSerial) || !isPaired}><Camera size={17} /> Capture Lab</button><button className="toolbar-button" onClick={() => void saveWorkflow()} disabled={isSaving}><Save size={17} /> Lưu</button>{run.state === 'RUNNING' ? <button className="run-button stop" onClick={() => void stopRun()}><CircleStop size={18} /> Dừng</button> : <button className="run-button" onClick={() => void startRun()} disabled={(standalone && !selectedSerial) || !isPaired}><Play size={18} fill="currentColor" /> Chạy</button>}</div>
+        <div className="top-actions">{standalone && <button className="toolbar-button" onClick={() => setShowLiveView(true)} disabled={!selectedSerial}><Monitor size={17} /> Live View</button>}<button className="toolbar-button" onClick={() => setCaptureTarget({ workflowId: workflow.id })} disabled={(standalone && !selectedSerial) || !isPaired}><Camera size={17} /> Capture Lab</button><button className="toolbar-button" onClick={() => void saveWorkflow()} disabled={isSaving}><Save size={17} /> Lưu</button>{run.state === 'RUNNING' ? <button className="run-button stop" onClick={() => void stopRun()}><CircleStop size={18} /> Dừng</button> : <button className="run-button" onClick={() => void startRun()} disabled={(standalone && !selectedSerial) || !isPaired}><Play size={18} fill="currentColor" /> Chạy</button>}{standalone && <><div className="account-chip"><span>{user.role}</span><strong>{user.displayName}</strong></div><button className="icon-button logout-button" onClick={() => void onLogout()} aria-label="Đăng xuất" title="Đăng xuất"><LogOut size={17} /></button></>}</div>
       </header>
 
       <section className="status-rail"><div><Smartphone size={15} /><span>DISPLAY</span><strong>{device ? `${device.displayWidth} × ${device.displayHeight}` : '2608 × 1200'}</strong></div><div><Cpu size={15} /><span>ROOT / INSPECTOR</span><strong className={device?.rootGranted ? 'good' : 'warn'}>{device ? `${device.rootGranted ? 'KERNELSU' : 'NO ROOT'} · ${device.accessibilityReady ? 'TEXT READY' : 'TEXT AUTO'}` : 'CHƯA KIỂM TRA'}</strong></div><div><span>WORKFLOW</span><strong>{workflow.name} · r{workflow.revision}</strong></div><div><span>VALIDATION</span><strong className={validation.valid ? 'good' : 'bad'}>{validation.valid ? 'SẴN SÀNG' : `${validation.issues.length} LỖI`}</strong></div><div className="run-state"><span>RUN</span><strong data-state={run.state}>{statusLabel}</strong></div></section>
@@ -389,13 +424,14 @@ export function App() {
       {workspace === 'STUDIO' && <WorkflowCanvas workflow={workflow} activeNodeId={run.currentNodeId} onChange={changeWorkflow} onPlayNode={(node) => void playNode(node)} isNodeTestRunning={!isPaired || (isNodeTest && run.state === 'RUNNING')} />}
       {workspace === 'WORKFLOWS' && <WorkflowManager workflows={workflows} selectedId={workflow.id} onSelect={(id) => { setSelectedWorkflowId(id); setWorkspace('STUDIO') }} onCreate={(name) => void createWorkflow(name)} onRename={(id, name) => void renameWorkflow(id, name)} onDelete={(id) => void deleteWorkflow(id)} />}
       {workspace === 'ASSETS' && <AssetLibrary workflows={workflows} selectedWorkflowId={workflow.id} onSelectWorkflow={setSelectedWorkflowId} onCapture={(workflowId) => setCaptureTarget({ workflowId })} onReplace={(asset) => setCaptureTarget({ workflowId: asset.workflowId, initialImageAsset: asset })} onRename={(asset, name) => void renameAsset(asset, name)} onDelete={(asset) => void deleteAsset(asset)} getAssetImage={standalone ? projectApi.getAssetImage : agentApi.getAssetImage} />}
+      {workspace === 'ADMIN' && standalone && user.role === 'ADMIN' && <AdminPanel currentUser={user} />}
 
       <footer className="footer-strip"><span>AIPhone Studio v0.2</span><span>{workflow.nodes.length} nodes · {workflow.edges.length} edges · {workflow.assets.length} Assets</span><span>{selectedSerial ? `USB: ${selectedSerial}` : 'Target: chưa chọn điện thoại'}</span></footer>
 
       {captureTarget && <CaptureLab workflowId={captureTarget.workflowId} initialImageAsset={captureTarget.initialImageAsset} capture={agentApi.captureScreenshot} inspect={agentApi.getUiHierarchy} onClose={() => setCaptureTarget(undefined)} onSaveImage={saveImageAsset} onSaveSelector={saveSelectorAsset} />}
       {showLiveView && selectedSerial && <LiveViewPanel serial={selectedSerial} onClose={() => setShowLiveView(false)} />}
-      {showDevices && standalone && <div className="modal-backdrop device-backdrop"><section className="device-card" role="dialog" aria-modal="true" aria-labelledby="device-title"><header><div><span>USB FLEET / ADB</span><h2 id="device-title">Chọn các điện thoại đích</h2></div><button className="icon-button" onClick={() => setShowDevices(false)} aria-label="Đóng"><X size={18} /></button></header><p>Chọn nhiều máy để đồng bộ/chạy hàng loạt. Máy bấm gần nhất là máy chính dùng Capture Lab và test từng node.</p><div className="device-list">{adbDevices.length === 0 && <div className="device-empty"><Usb size={24} /><strong>Chưa tìm thấy thiết bị</strong><span>Kiểm tra cáp USB rồi bấm Quét lại.</span></div>}{adbDevices.map((candidate) => <button key={candidate.serial} className={`device-option ${targetSerials.includes(candidate.serial) ? 'selected' : ''}`} disabled={candidate.state !== 'device'} onClick={() => toggleTargetDevice(candidate.serial)}><span className="device-check">{targetSerials.includes(candidate.serial) ? '✓' : ''}</span><span><strong>{candidate.model || candidate.serial}</strong><small>{candidate.serial} · {hasAgentToken(candidate.serial) ? 'đã ghép nối' : 'cần pairing token'}</small></span><em data-state={candidate.state}>{candidate.serial === selectedSerial ? 'Máy chính' : candidate.state === 'device' ? 'Sẵn sàng' : candidate.state}</em></button>)}</div><footer><button className="secondary-button" onClick={() => void scanDevices()} disabled={isScanning}><RefreshCw size={16} className={isScanning ? 'spin' : ''} /> {isScanning ? 'Đang quét...' : 'Quét lại'}</button><button className="primary-button" onClick={() => { setShowDevices(false); if (selectedSerial && !hasAgentToken(selectedSerial)) setShowPairing(true) }}>Dùng {targetSerials.length} máy</button></footer></section></div>}
-      {showPairing && <div className="modal-backdrop pairing-backdrop"><section className="pairing-card" role="dialog" aria-modal="true" aria-labelledby="pairing-title"><span>SECURE ROOT CHANNEL</span><h2 id="pairing-title">Ghép nối với Android Agent</h2><p>Nhập pairing token hiển thị trong app AIPhone Agent. Token chỉ tồn tại trong phiên trình duyệt này.</p><input id="pairing-token" name="pairing-token" aria-label="Pairing token" autoFocus value={pairingInput} onChange={(event) => setPairingInput(event.target.value)} placeholder="xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx" /><div><button className="secondary-button" onClick={() => setShowPairing(false)}>Dùng bản nháp offline</button><button className="primary-button" disabled={pairingInput.replace(/\s/g, '').length < 16} onClick={connectWithToken}>Kết nối Agent</button></div></section></div>}
+      {showDevices && standalone && <div className="modal-backdrop device-backdrop"><section className="device-card" role="dialog" aria-modal="true" aria-labelledby="device-title"><header><div><span>USB FLEET / ADB</span><h2 id="device-title">Chọn các điện thoại đích</h2></div><button className="icon-button" onClick={() => setShowDevices(false)} aria-label="Đóng"><X size={18} /></button></header><p>Chỉ hiện thiết bị chưa có chủ hoặc đã được cấp cho tài khoản <strong>{user.displayName}</strong>. Token đã lưu không được gửi về trình duyệt.</p><div className="device-list">{adbDevices.length === 0 && <div className="device-empty"><Usb size={24} /><strong>Chưa tìm thấy thiết bị được phép dùng</strong><span>Kiểm tra cáp USB, quyền tài khoản rồi bấm Quét lại.</span></div>}{adbDevices.map((candidate) => <button key={candidate.serial} className={`device-option ${targetSerials.includes(candidate.serial) ? 'selected' : ''}`} disabled={candidate.state !== 'device'} onClick={() => toggleTargetDevice(candidate.serial)}><span className="device-check">{targetSerials.includes(candidate.serial) ? '✓' : ''}</span><span><strong>{candidate.model || candidate.serial}</strong><small>{candidate.serial} · {candidate.paired ? 'token đã mã hóa' : candidate.canPair ? 'cần pairing token' : 'được cấp · chờ chủ pairing'}</small></span><em data-state={candidate.state}>{candidate.serial === selectedSerial ? 'Máy chính' : candidate.state === 'device' ? 'Sẵn sàng' : candidate.state}</em></button>)}</div><footer><button className="secondary-button" onClick={() => void scanDevices()} disabled={isScanning}><RefreshCw size={16} className={isScanning ? 'spin' : ''} /> {isScanning ? 'Đang quét...' : 'Quét lại'}</button>{selectedSerial && isPaired && selectedCanPair && <button className="secondary-button danger-text" onClick={() => void forgetCredential()}>Quên token</button>}<button className="primary-button" onClick={() => { setShowDevices(false); if (selectedSerial && !deviceIsPaired(selectedSerial) && selectedCanPair) setShowPairing(true) }}>Dùng {targetSerials.length} máy</button></footer></section></div>}
+      {showPairing && <div className="modal-backdrop pairing-backdrop"><section className="pairing-card" role="dialog" aria-modal="true" aria-labelledby="pairing-title"><span>ENCRYPTED DEVICE CREDENTIAL</span><h2 id="pairing-title">Ghép nối với Android Agent</h2><p>Nhập pairing token hiển thị trong app AIPhone Agent. Backend mã hóa token bằng AES-256-GCM, gắn với đúng thiết bị và tài khoản được phép; browser không thể đọc lại token.</p><input id="pairing-token" name="pairing-token" aria-label="Pairing token" autoFocus value={pairingInput} onChange={(event) => setPairingInput(event.target.value)} placeholder="xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx" /><div><button className="secondary-button" onClick={() => setShowPairing(false)}>Để sau</button><button className="primary-button" disabled={pairingInput.replace(/\s/g, '').length < 16 || !selectedCanPair} onClick={() => void connectWithToken()}>Mã hóa & kết nối</button></div></section></div>}
     </main>
   )
 }

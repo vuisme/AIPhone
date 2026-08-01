@@ -19,6 +19,10 @@
 - Typed workflow run inputs and runtime variables with `SET_VARIABLE`, generic `IF` and `LOG` nodes.
 - Expandable Run Data inspector showing typed values produced by the on-phone executor.
 - Rootless USB Live View with 1-2 FPS preview, freeze/refresh controls and click-to-tap input.
+- First-run administrator setup, login/logout and professional `ADMIN`/`USER` account management.
+- PostgreSQL persistence for accounts, workflows, Assets, device ownership, grants and audit events.
+- Redis-backed opaque sessions, CSRF state, immediate revocation and login rate limiting.
+- AES-256-GCM encrypted pairing credentials scoped to authorized ADB devices and never returned to the browser.
 
 ### Changed
 
@@ -26,6 +30,7 @@
 - Migrated the canonical workflow contract to `assets/assetId` while preserving legacy template data.
 - Phones now act as offline deployment targets while the Studio Host owns canonical workflow and Asset data.
 - Studio node inspectors are generated from field schemas so new node types no longer require canvas-specific forms.
+- Studio workflow and device lists are filtered by ownership, administrator access and explicit user grants.
 
 ### Fixed
 

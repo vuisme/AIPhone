@@ -8,7 +8,7 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 const MAX_WORKFLOW_BYTES = 2 * 1024 * 1024
 const MAX_ASSET_BYTES = 8 * 1024 * 1024
 
-function assertId(value, label) {
+export function assertId(value, label) {
   if (typeof value !== 'string' || !ID_PATTERN.test(value)) throw new Error(`${label} ID is invalid`)
   return value
 }
@@ -18,10 +18,10 @@ function assertInside(parent, target) {
   if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Resolved path escapes the Studio data directory')
 }
 
-function parseWorkflow(input, pathId) {
-  const bytes = Buffer.isBuffer(input) ? input : Buffer.from(input)
+export function parseWorkflow(input, pathId) {
+  const bytes = Buffer.isBuffer(input) ? input : Buffer.from(typeof input === 'string' ? input : JSON.stringify(input))
   if (bytes.length > MAX_WORKFLOW_BYTES) throw new Error('Workflow is too large')
-  const workflow = JSON.parse(bytes.toString('utf8'))
+  const workflow = typeof input === 'object' && !Buffer.isBuffer(input) ? input : JSON.parse(bytes.toString('utf8'))
   if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) throw new Error('Workflow must be a JSON object')
   const id = assertId(workflow.id, 'Workflow')
   if (pathId && id !== pathId) throw new Error('Workflow path and body IDs must match')
@@ -31,7 +31,7 @@ function parseWorkflow(input, pathId) {
   return workflow
 }
 
-function decodePng(dataUrl) {
+export function decodePng(dataUrl) {
   if (typeof dataUrl !== 'string') throw new Error('Asset imageBase64 is required')
   const encoded = dataUrl.includes(',') ? dataUrl.slice(dataUrl.indexOf(',') + 1) : dataUrl
   const bytes = Buffer.from(encoded, 'base64')
@@ -149,4 +149,3 @@ export class ProjectStore {
     await rename(temporary, target)
   }
 }
-

@@ -4,5 +4,9 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.22.0",
+    "redis": "^6.2.0"
   }
 }

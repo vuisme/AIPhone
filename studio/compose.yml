@@ -1,6 +1,41 @@
 name: aiphone
 
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: aiphone-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aiphone
+      POSTGRES_USER: aiphone
+      POSTGRES_PASSWORD: ${AIPHONE_POSTGRES_PASSWORD:?AIPHONE_POSTGRES_PASSWORD is required}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiphone -d aiphone"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    container_name: aiphone-redis
+    restart: unless-stopped
+    environment:
+      AIPHONE_REDIS_PASSWORD: ${AIPHONE_REDIS_PASSWORD:?AIPHONE_REDIS_PASSWORD is required}
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${AIPHONE_REDIS_PASSWORD}"]
+    ports:
+      - "127.0.0.1:56379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$AIPHONE_REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   studio:
     image: ghcr.io/vuisme/aiphone-studio:latest
     build:
@@ -8,5 +43,14 @@ services:
       dockerfile: studio/Dockerfile
     container_name: aiphone-studio
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "127.0.0.1:4173:4173"
+
+volumes:
+  postgres-data:
+  redis-data:

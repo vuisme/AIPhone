@@ -19,6 +19,9 @@ AIPhone is an Android automation Agent with a browser-based no-code workflow Stu
 - Typed root operations for Xiaomi HyperOS XSpace user `999`.
 - Root-optional main-user launch and Accessibility tap, swipe and text actions.
 - Signed Stable and Nightly GitHub Releases with monotonically increasing version codes.
+- Professional Studio accounts with `ADMIN` and `USER` roles, workflow/device ownership and explicit grants.
+- PostgreSQL-backed workflows, Assets, devices and audit events with Redis-backed sessions and login throttling.
+- Restart-safe encrypted pairing credentials injected only for authorized device requests.
 
 The initial target is `com.garena.game.kgvn` on Xiaomi HyperOS 3 with KernelSU. The project does not inject into or inspect game memory and is not intended for in-match automation.
 
@@ -67,7 +70,9 @@ Start the published Studio image and the local USB bridge with one command:
 
 Build the image from the current checkout by adding `-Build`. Stop both processes with `.\studio\stop-docker.cmd`.
 
-Docker serves the web UI at `127.0.0.1:4173`. The small USB bridge remains on the Windows host at `127.0.0.1:4174`, because Linux containers under Docker Desktop cannot reliably access Windows USB devices. Neither endpoint is exposed to the LAN.
+Docker Compose runs PostgreSQL, Redis and the web UI. Studio is available at `127.0.0.1:4173`; the authenticated USB bridge remains on the Windows host at `127.0.0.1:4174`, because Linux containers under Docker Desktop cannot reliably access Windows USB devices. All service ports are bound to loopback and are not exposed to the LAN.
+
+The launcher generates `studio/.runtime/studio.env` once and reuses it across upgrades. The first visit creates the initial administrator. Do not delete the runtime secret file or the named PostgreSQL volume: together they preserve accounts, workflows, device grants and decryptable pairing credentials.
 
 ## Start Studio without Docker
 
@@ -89,8 +94,9 @@ Then:
 1. Open `AIPhone Agent`; enable its service and Accessibility permission. Grant KernelSU root only for image/XSpace workflows.
 2. Enable USB debugging and accept the computer's RSA key.
 3. Open `http://127.0.0.1:4173` if it did not open automatically.
-4. Select the phone shown by model and ADB serial.
-5. Enter the pairing token shown in the Android app.
+4. Create the initial administrator or sign in with an existing Studio account.
+5. Select an authorized phone by model and ADB serial.
+6. Enter its pairing token only if the backend has not already stored one.
 
 The PC host creates a separate ADB forward for the selected serial. The Agent remains bound to device loopback; Wi-Fi/LAN discovery is intentionally deferred.
 
@@ -107,8 +113,9 @@ The PC host creates a separate ADB forward for the selected serial. The Agent re
 ## Security boundaries
 
 - The Agent listens on device loopback only; the desktop host manages ADB forwarding.
-- Every API request requires the random pairing token shown by the Android app.
-- Pairing tokens stay scoped to one ADB serial and are never stored in workflow data.
+- Browser requests require an opaque server-side Studio session and CSRF protection for mutations.
+- Android Agent requests require its random pairing token; the bridge injects only the encrypted credential stored for the authorized ADB serial.
+- Pairing tokens stay scoped to one ADB serial, are never stored in workflow data and are never returned to browser JavaScript.
 - Studio cannot send arbitrary shell commands.
 - Clone actions are restricted to package `com.garena.game.kgvn` and user `999`.
 - The updater accepts only fixed `vuisme/AIPhone` GitHub Release URLs and verifies package name, version code and signing certificate.

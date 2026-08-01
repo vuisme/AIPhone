@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
+import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { agentPathFromBridgeUrl, bridgeCorsHeaders, createStudioServer } from '../server.mjs'
 import { ProjectStore } from '../project-store.mjs'
+import { forbidden, unauthorized } from '../errors.mjs'
+
+function jsonResponse(response, body) {
+  response.writeHead(200, { 'Content-Type': 'application/json' })
+  response.end(JSON.stringify(body))
+}
 
 async function withServer(options, run) {
   const server = createStudioServer(options)
@@ -14,6 +21,22 @@ async function withServer(options, run) {
     await run(`http://127.0.0.1:${address.port}`)
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  }
+}
+
+function securedServices(repository = {}) {
+  const user = { id: 'member', role: 'USER', status: 'ACTIVE', email: 'member@example.com', displayName: 'Member' }
+  return {
+    auth: {
+      authenticate: async (token) => {
+        if (token !== 'session-token') throw unauthorized()
+        return { user, token, session: { userId: user.id, csrfToken: 'csrf-token' } }
+      },
+      assertCsrf: (_authentication, token) => { if (token !== 'csrf-token') throw forbidden('CSRF token is invalid') },
+    },
+    repository,
+    sessions: {},
+    importLegacy: async () => ({ imported: 0 }),
   }
 }
 
@@ -73,6 +96,61 @@ test('bridge-only server rejects non-local browser origins', async () => {
   })
 })
 
+test('secured bridge rejects requests without an authenticated cookie', async () => {
+  const bridge = { listDevices: async () => [] }
+  await withServer({ bridge, bridgeOnly: true, services: securedServices() }, async (origin) => {
+    const response = await fetch(`${origin}/bridge/devices`, { headers: { Origin: 'http://127.0.0.1:4173' } })
+    assert.equal(response.status, 401)
+    assert.equal((await response.json()).error.code, 'AUTH_REQUIRED')
+  })
+})
+
+test('secured bridge hides unexpected backend details behind a request ID', async () => {
+  const bridge = { listDevices: async () => [{ serial: 'phone', state: 'device' }] }
+  const repository = { connectedDeviceStatus: async () => { throw new Error('password=database-secret') } }
+  await withServer({ bridge, bridgeOnly: true, services: securedServices(repository) }, async (origin) => {
+    const response = await fetch(`${origin}/bridge/devices`, {
+      headers: { Origin: 'http://127.0.0.1:4173', Cookie: 'aiphone.sid=session-token' },
+    })
+    const body = await response.json()
+    assert.equal(response.status, 500)
+    assert.equal(body.error.message, 'The request could not be completed')
+    assert.equal(JSON.stringify(body).includes('database-secret'), false)
+    assert.ok(body.requestId)
+  })
+})
+
+test('secured proxy ignores browser tokens and injects the authorized stored credential', async () => {
+  const agent = http.createServer((request, response) => {
+    jsonResponse(response, { pairingToken: request.headers['x-aiphone-token'] })
+  })
+  await new Promise((resolve) => agent.listen(0, '127.0.0.1', resolve))
+  const agentPort = agent.address().port
+  const bridge = {
+    listDevices: async () => [{ serial: 'phone', state: 'device' }],
+    ensureForward: async () => agentPort,
+    forgetForward: () => undefined,
+  }
+  const repository = {
+    credentialForUse: async () => 'stored-secret-token',
+  }
+  try {
+    await withServer({ bridge, bridgeOnly: true, services: securedServices(repository) }, async (origin) => {
+      const response = await fetch(`${origin}/bridge/devices/phone/api/device`, {
+        headers: {
+          Origin: 'http://127.0.0.1:4173',
+          Cookie: 'aiphone.sid=session-token',
+          'X-AIPhone-Token': 'browser-supplied-token',
+        },
+      })
+      assert.equal(response.status, 200)
+      assert.deepEqual(await response.json(), { pairingToken: 'stored-secret-token' })
+    })
+  } finally {
+    await new Promise((resolve) => agent.close(resolve))
+  }
+})
+
 test('bridge-only server preserves CORS headers when ADB fails', async () => {
   const bridge = { listDevices: async () => { throw new Error('ADB unavailable') } }
   await withServer({ bridge, bridgeOnly: true }, async (origin) => {
@@ -119,7 +197,7 @@ test('bridge-only tap endpoint rejects invalid coordinates', async () => {
       headers: { Origin: 'http://127.0.0.1:4173', 'Content-Type': 'application/json' },
       body: JSON.stringify({ x: -1, y: 340 }),
     })
-    assert.equal(response.status, 400)
+    assert.equal(response.status, 422)
     assert.match((await response.json()).error, /coordinates/i)
   })
 })

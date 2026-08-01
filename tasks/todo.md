@@ -164,3 +164,28 @@
   - Acceptance: Docker/bridge health is green and the signed APK deploys without losing workflows
   - Verify: local health checks, Android CI and `adb install -r`
   - Files: changelog, docs and release artifacts
+
+- [x] Task 34: Define Studio authentication and RBAC contracts
+  - Acceptance: roles, ownership, grants, sessions and pairing security have testable rules
+  - Verify: `docs/specs/studio-accounts-rbac.md` and ADR-003 cover all boundaries
+  - Files: `docs/specs/`, `docs/decisions/`, `tasks/`
+
+- [ ] Task 35: Add PostgreSQL repositories and Redis sessions
+  - Acceptance: setup/login/member/workflow/device data persists and disabled users lose sessions
+  - Verify: host unit and integration tests
+  - Files: `studio/host/`, migrations and tests
+
+- [ ] Task 36: Enforce authorization and secure pairing
+  - Acceptance: cross-user access fails; token ciphertext is injected only for authorized serials
+  - Verify: adversarial API/proxy tests
+  - Files: host server, auth middleware, credential vault and tests
+
+- [ ] Task 37: Add account and sharing UI
+  - Acceptance: setup/login/logout, member management and workflow/device grants work without exposing secrets
+  - Verify: Vitest, typecheck and production build
+  - Files: Studio auth/admin components, API client and styles
+
+- [ ] Task 38: Deploy the account-aware Studio
+  - Acceptance: Compose provisions Postgres/Redis with persistent volumes and restart-safe generated secrets
+  - Verify: host/web tests, npm audit, Docker health and manual user testing
+  - Files: Compose, launcher, README and changelog

@@ -107,6 +107,16 @@ Checkpoint: Studio manages multiple workflows and their Assets, can create text-
 
 Checkpoint: one canonical workflow deploys incrementally to multiple USB phones, runs offline, and the Agent clearly supports both rooted and limited non-root modes.
 
+### Phase 9: Studio Identity and Resource Authorization
+
+- Task 34: Define the authentication, RBAC, workflow ownership and device grant contracts.
+- Task 35: Add PostgreSQL migrations/repositories and Redis-backed sessions/rate limits.
+- Task 36: Protect Studio/bridge APIs and encrypt persistent pairing credentials.
+- Task 37: Add first-admin setup, login and professional member/resource management UI.
+- Task 38: Add Compose services, secret bootstrap, legacy data import and deployment verification.
+
+Checkpoint: admin and user accounts are isolated at the API boundary, granted resources are usable, and pairing survives all local service/browser restarts without exposing plaintext tokens.
+
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |

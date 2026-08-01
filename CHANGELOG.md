@@ -39,6 +39,7 @@
 
 ### Fixed
 
+- Allow Cloud Callback commands to reach the Agent's authenticated HTTP server over the app-internal `127.0.0.1` loopback while keeping external cleartext traffic disabled.
 - Capture the primary physical display explicitly on multi-display Xiaomi devices.
 - Log image-match bounds and tap coordinates, retry failed taps, and stop false `FOUND` results when the target image remains visible.
 - Serve the full Studio login shell without requiring an authenticated workflow request context.

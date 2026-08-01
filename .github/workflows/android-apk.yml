@@ -71,6 +71,9 @@ jobs:
           npm test
           npm audit --audit-level=high
 
+      - name: Verify Android loopback network policy
+        run: node android-agent/scripts/verify-network-security.mjs
+
       - name: Bundle Studio into Android assets
         run: |
           mkdir -p android-agent/app/src/main/assets/studio

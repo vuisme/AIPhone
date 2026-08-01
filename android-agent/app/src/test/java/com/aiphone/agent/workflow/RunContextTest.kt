@@ -13,7 +13,7 @@ class RunContextTest {
         context.set("accountReady", RunValue(WorkflowValueType.BOOLEAN, false))
 
         assertEquals(3.0, context.require("rewardCount").value)
-        assertFalse(context.toJson().getJSONObject("accountReady").getBoolean("value"))
+        assertFalse(context.snapshot().getValue("accountReady").value as Boolean)
     }
 
     @Test

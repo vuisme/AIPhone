@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseAdbDevices, parseAdbForwards, requireConnectedSerial } from '../adb.mjs'
+import { AdbBridge, parseAdbDevices, parseAdbForwards, requireConnectedSerial } from '../adb.mjs'
 
 test('parseAdbDevices returns usable USB devices and preserves offline entries', () => {
   const output = `List of devices attached
@@ -34,4 +34,32 @@ test('requireConnectedSerial accepts only an exact connected serial', () => {
   assert.throws(() => requireConnectedSerial(devices, 'c421'), /not connected/i)
   assert.throws(() => requireConnectedSerial(devices, 'offline-phone'), /not connected/i)
   assert.throws(() => requireConnectedSerial(devices, '../c421ff5b'), /not connected/i)
+})
+
+test('captureScreen uses binary adb exec-out for a rootless USB preview', async () => {
+  const calls = []
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01])
+  const bridge = new AdbBridge({
+    adbPath: 'adb',
+    run: async (_executable, args, options) => {
+      calls.push({ args, options })
+      if (args[0] === 'devices') return { stdout: 'List of devices attached\nphone device\n' }
+      return { stdout: png }
+    },
+  })
+
+  assert.equal(await bridge.captureScreen('phone'), png)
+  assert.deepEqual(calls[1].args, ['-s', 'phone', 'exec-out', 'screencap', '-p'])
+  assert.equal(calls[1].options.encoding, 'buffer')
+})
+
+test('captureScreen rejects adb output that is not a PNG', async () => {
+  const bridge = new AdbBridge({
+    adbPath: 'adb',
+    run: async (_executable, args) => args[0] === 'devices'
+      ? { stdout: 'List of devices attached\nphone device\n' }
+      : { stdout: Buffer.from('screencap failed') },
+  })
+
+  await assert.rejects(() => bridge.captureScreen('phone'), /did not return a PNG/i)
 })

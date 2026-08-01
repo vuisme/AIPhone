@@ -19,7 +19,8 @@ export function WorkflowNodeCard({ id, data, selected }: NodeProps) {
   const nodeData = data as WorkflowNodeData
   const definition = nodeDefinition(nodeData.nodeType)
   const Icon = definition.icon
-  const isBranch = nodeData.nodeType === 'IF_IMAGE' || nodeData.nodeType === 'WAIT_IMAGE'
+  const outcomes = definition.outcomes ?? []
+  const isBranch = outcomes.length > 0
   const isTerminal = nodeData.nodeType === 'SUCCESS' || nodeData.nodeType === 'FAILURE'
 
   return (
@@ -42,10 +43,10 @@ export function WorkflowNodeCard({ id, data, selected }: NodeProps) {
       {isBranch && <GitBranch className="flow-node__branch" size={15} />}
       {!isTerminal && !isBranch && <Handle type="source" position={Position.Right} />}
       {isBranch && (
-        <>
-          <Handle id="FOUND" type="source" position={Position.Right} style={{ top: '38%' }} />
-          <Handle id="TIMEOUT" type="source" position={Position.Right} style={{ top: '70%' }} />
-        </>
+        outcomes.map((outcome, index) => {
+          const top = `${Math.round(((index + 1) / (outcomes.length + 1)) * 100)}%`
+          return <div className="flow-node__outcome" key={outcome.id} style={{ top }}><span>{outcome.label}</span><Handle id={outcome.id} type="source" position={Position.Right} title={outcome.label} /></div>
+        })
       )}
     </div>
   )

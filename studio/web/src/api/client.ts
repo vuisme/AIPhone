@@ -21,6 +21,11 @@ export function buildAgentPath(path: string, serial = selectedSerial): string {
   return serial ? `${BRIDGE_ORIGIN}/bridge/devices/${encodeURIComponent(serial)}${path}` : path
 }
 
+export function buildBridgeDevicePath(path: string, serial = selectedSerial): string {
+  if (!serial) throw new Error('Chưa chọn điện thoại USB')
+  return `${BRIDGE_ORIGIN}/bridge/devices/${encodeURIComponent(serial)}${path}`
+}
+
 export function getAgentDeviceSerial(): string {
   return selectedSerial
 }
@@ -95,6 +100,19 @@ export interface RunStatus {
   finishedAt?: string
   iteration: number
   logs?: RunLogEntry[]
+  variables?: Record<string, RunValue>
+  lastResult?: NodeResult
+}
+
+export interface RunValue {
+  type: 'STRING' | 'NUMBER' | 'BOOLEAN' | 'JSON'
+  value: unknown
+}
+
+export interface NodeResult {
+  outcome?: string
+  value?: RunValue
+  metadata?: Record<string, unknown>
 }
 
 export interface RunLogEntry {
@@ -143,6 +161,19 @@ export const bridgeApi = {
     const response = await fetch(`${BRIDGE_ORIGIN}/bridge/devices`, { cache: 'no-store' })
     const result = await parseJson<{ devices: AdbDevice[] }>(response)
     return result.devices
+  },
+
+  async captureScreen(serial = selectedSerial): Promise<Blob> {
+    const response = await fetch(buildBridgeDevicePath('/screen', serial), { cache: 'no-store' })
+    if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
+    return response.blob()
+  },
+
+  async tapDevice(x: number, y: number, serial = selectedSerial): Promise<void> {
+    const response = await fetch(buildBridgeDevicePath('/input/tap', serial), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ x, y }),
+    })
+    if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
   },
 }
 

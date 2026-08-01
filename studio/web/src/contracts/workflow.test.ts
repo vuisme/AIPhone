@@ -85,4 +85,38 @@ describe('workflow validation', () => {
 
     expect(validateWorkflow(workflow)).toEqual({ valid: true, issues: [] })
   })
+
+  it('normalizes typed workflow parameters for reusable runs', () => {
+    const workflow = normalizeWorkflow({
+      ...createStarterWorkflow(),
+      parameters: [
+        { name: 'rewardCount', type: 'NUMBER', defaultValue: 3 },
+        { name: 'accountReady', type: 'BOOLEAN', defaultValue: false },
+      ],
+    })
+
+    expect(workflow.parameters).toEqual([
+      { name: 'rewardCount', type: 'NUMBER', defaultValue: 3 },
+      { name: 'accountReady', type: 'BOOLEAN', defaultValue: false },
+    ])
+  })
+
+  it('validates variable node names and duplicate workflow parameters', () => {
+    const workflow = createStarterWorkflow()
+    workflow.parameters = [
+      { name: 'rewardCount', type: 'NUMBER', defaultValue: 0 },
+      { name: 'rewardCount', type: 'NUMBER', defaultValue: 1 },
+    ]
+    workflow.nodes.push({
+      id: 'set-invalid',
+      type: 'SET_VARIABLE',
+      position: { x: 300, y: 120 },
+      config: { name: 'not valid', valueType: 'STRING', value: 'x' },
+    })
+
+    expect(validateWorkflow(workflow).issues).toEqual(expect.arrayContaining([
+      'Duplicate workflow parameter rewardCount',
+      'Node set-invalid has invalid variable name not valid',
+    ]))
+  })
 })

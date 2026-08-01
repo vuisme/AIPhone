@@ -32,6 +32,8 @@ const API_PATHS = [
 ]
 const STUDIO_WORKFLOW_PATH = /^\/studio\/workflows\/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})$/
 const STUDIO_ASSET_PATH = /^\/studio\/workflows\/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})\/assets\/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})$/
+const BRIDGE_SCREEN_PATH = /^\/bridge\/devices\/([^/]+)\/screen$/
+const BRIDGE_TAP_PATH = /^\/bridge\/devices\/([^/]+)\/input\/tap$/
 const MAX_STUDIO_BODY_BYTES = 12 * 1024 * 1024
 
 export function agentPathFromBridgeUrl(rawUrl, serial) {
@@ -192,6 +194,23 @@ export function createStudioServer({ bridge = new AdbBridge(), projectStore = ne
       if (url.pathname.startsWith('/studio/')) return json(response, 404, { error: 'Unknown Studio resource' }, corsHeaders)
       if (request.method === 'GET' && url.pathname === '/bridge/devices') {
         return json(response, 200, { devices: await bridge.listDevices() }, corsHeaders)
+      }
+      const bridgeScreen = BRIDGE_SCREEN_PATH.exec(url.pathname)
+      if (bridgeScreen && request.method === 'GET') {
+        const serial = decodeURIComponent(bridgeScreen[1])
+        return bytes(response, 200, 'image/png', await bridge.captureScreen(serial), corsHeaders)
+      }
+      const bridgeTap = BRIDGE_TAP_PATH.exec(url.pathname)
+      if (bridgeTap && request.method === 'POST') {
+        const serial = decodeURIComponent(bridgeTap[1])
+        const payload = JSON.parse((await requestBody(request)).toString('utf8'))
+        const x = Number(payload.x)
+        const y = Number(payload.y)
+        if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x > 100_000 || y > 100_000) {
+          throw new Error('Tap coordinates are invalid')
+        }
+        await bridge.tap(serial, x, y)
+        return json(response, 200, { status: 'ok', x, y }, corsHeaders)
       }
       const match = url.pathname.match(/^\/bridge\/devices\/([^/]+)\/api\//)
       if (match) {

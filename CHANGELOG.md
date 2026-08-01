@@ -16,12 +16,16 @@
 - Modern Android Agent dashboard with service control, capability status and pairing details.
 - Stable/Nightly in-app updater restricted to signed APKs from the AIPhone GitHub repository.
 - GitHub release automation for opt-in Nightly builds and immutable semantic-version Stable builds.
+- Typed workflow run inputs and runtime variables with `SET_VARIABLE`, generic `IF` and `LOG` nodes.
+- Expandable Run Data inspector showing typed values produced by the on-phone executor.
+- Rootless USB Live View with 1-2 FPS preview, freeze/refresh controls and click-to-tap input.
 
 ### Changed
 
 - Grouped the React editor and desktop USB bridge under a single `studio/` project directory.
 - Migrated the canonical workflow contract to `assets/assetId` while preserving legacy template data.
 - Phones now act as offline deployment targets while the Studio Host owns canonical workflow and Asset data.
+- Studio node inspectors are generated from field schemas so new node types no longer require canvas-specific forms.
 
 ### Fixed
 

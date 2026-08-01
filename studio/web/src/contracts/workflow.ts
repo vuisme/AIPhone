@@ -1,6 +1,9 @@
 export type NodeType =
   | 'START'
   | 'DELAY'
+  | 'SET_VARIABLE'
+  | 'IF'
+  | 'LOG'
   | 'WAIT_IMAGE'
   | 'IF_IMAGE'
   | 'TAP_IMAGE'
@@ -41,6 +44,14 @@ export interface WorkflowEdge {
   source: string
   target: string
   sourceHandle?: string
+}
+
+export type WorkflowValueType = 'STRING' | 'NUMBER' | 'BOOLEAN' | 'JSON'
+
+export interface WorkflowParameter {
+  name: string
+  type: WorkflowValueType
+  defaultValue: unknown
 }
 
 interface AssetBase {
@@ -94,6 +105,7 @@ export interface WorkflowDocument {
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
   assets: AssetRecord[]
+  parameters: WorkflowParameter[]
   createdAt: string
   updatedAt: string
 }
@@ -114,10 +126,12 @@ export interface ValidationResult {
 
 const IMAGE_NODE_TYPES = new Set<NodeType>(['WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE'])
 const NODE_TYPES = new Set<NodeType>([
-  'START', 'DELAY', 'WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE', 'TAP_TEXT', 'TAP_POINT', 'SWIPE',
+  'START', 'DELAY', 'SET_VARIABLE', 'IF', 'LOG', 'WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE', 'TAP_TEXT', 'TAP_POINT', 'SWIPE',
   'LAUNCH_APP', 'FORCE_STOP_APP', 'CREATE_CLONE', 'DELETE_CLONE', 'CLEAR_CLONE', 'LOOP', 'SUCCESS', 'FAILURE',
 ])
 const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/
+const VARIABLE_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
+const VALUE_TYPES = new Set<WorkflowValueType>(['STRING', 'NUMBER', 'BOOLEAN', 'JSON'])
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -181,12 +195,35 @@ function migrateAsset(value: unknown, workflowId: string): AssetRecord | undefin
   }
 }
 
+function normalizeDefaultValue(type: WorkflowValueType, value: unknown): unknown {
+  if (type === 'STRING') return typeof value === 'string' ? value : String(value ?? '')
+  if (type === 'NUMBER') {
+    const parsed = typeof value === 'number' ? value : Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  if (type === 'BOOLEAN') return value === true || value === 'true'
+  return value ?? null
+}
+
+function migrateParameter(value: unknown): WorkflowParameter | undefined {
+  const record = asRecord(value)
+  const name = typeof record.name === 'string' ? record.name : ''
+  const type = typeof record.type === 'string' && VALUE_TYPES.has(record.type as WorkflowValueType)
+    ? record.type as WorkflowValueType
+    : 'STRING'
+  if (!VARIABLE_PATTERN.test(name)) return undefined
+  return { name, type, defaultValue: normalizeDefaultValue(type, record.defaultValue) }
+}
+
 export function normalizeWorkflow(value: unknown): WorkflowDocument {
   const source = asRecord(value)
   const now = new Date().toISOString()
   const id = typeof source.id === 'string' && ID_PATTERN.test(source.id) ? source.id : 'default-workflow'
   const sourceAssets = Array.isArray(source.assets) ? source.assets : Array.isArray(source.templates) ? source.templates : []
   const assets = sourceAssets.map((asset) => migrateAsset(asset, id)).filter((asset): asset is AssetRecord => Boolean(asset))
+  const parameters = (Array.isArray(source.parameters) ? source.parameters : [])
+    .map(migrateParameter)
+    .filter((parameter): parameter is WorkflowParameter => Boolean(parameter))
   const nodes = (Array.isArray(source.nodes) ? source.nodes : []).map((value) => {
     const node = asRecord(value)
     const config = { ...asRecord(node.config) }
@@ -218,6 +255,7 @@ export function normalizeWorkflow(value: unknown): WorkflowDocument {
       }
     }),
     assets,
+    parameters,
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : now,
     updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : now,
   }
@@ -236,6 +274,7 @@ export function createStarterWorkflow(name = 'Liên Quân reroll', id = 'default
     ],
     edges: [{ id: 'start-success', source: 'start', target: 'success' }],
     assets: [],
+    parameters: [],
     createdAt: now,
     updatedAt: now,
   }
@@ -262,6 +301,13 @@ export function validateWorkflow(workflow: WorkflowDocument): ValidationResult {
     issues.push('Workflow must contain exactly one START node')
   }
 
+  const parameterNames = new Set<string>()
+  for (const parameter of workflow.parameters ?? []) {
+    if (!VARIABLE_PATTERN.test(parameter.name)) issues.push(`Invalid workflow parameter ${parameter.name}`)
+    if (parameterNames.has(parameter.name)) issues.push(`Duplicate workflow parameter ${parameter.name}`)
+    parameterNames.add(parameter.name)
+  }
+
   const assetIds = new Set<string>()
   for (const asset of workflow.assets) {
     if (assetIds.has(asset.id)) issues.push(`Duplicate Asset id ${asset.id}`)
@@ -276,6 +322,14 @@ export function validateWorkflow(workflow: WorkflowDocument): ValidationResult {
     if (nodeIds.has(node.id)) issues.push(`Duplicate node id ${node.id}`)
     nodeIds.add(node.id)
     if (!NODE_TYPES.has(node.type)) issues.push(`Node ${node.id} has unsupported type ${node.type}`)
+    if (node.type === 'SET_VARIABLE') {
+      const name = String(node.config.name ?? '')
+      if (!VARIABLE_PATTERN.test(name)) issues.push(`Node ${node.id} has invalid variable name ${name}`)
+    }
+    if (node.type === 'IF') {
+      const name = String(node.config.leftVariable ?? '')
+      if (!VARIABLE_PATTERN.test(name)) issues.push(`Node ${node.id} has invalid left variable ${name}`)
+    }
 
     if (!node.disabled && (IMAGE_NODE_TYPES.has(node.type) || node.type === 'TAP_TEXT')) {
       const assetId = node.config.assetId

@@ -5,11 +5,13 @@ AIPhone is an Android automation Agent with a browser-based no-code workflow Stu
 ## MVP capabilities
 
 - Drag-and-drop workflow nodes with branches and loops.
+- Use typed run inputs and variables with generic `IF` branches and interpolated logging.
 - Manage multiple workflows, each with its own reusable Asset library.
 - Capture the current Android screen and crop native-pixel PNG Assets in the browser.
 - Replace image Assets without rebuilding the APK.
 - Inspect accessible Android/WebView text over the live screenshot and create `TAP_TEXT` nodes visually.
 - Run Studio independently on the PC and choose a connected USB phone by ADB serial.
+- Preview and control the selected phone through rootless USB Live View at 1-2 FPS.
 - Keep canonical workflows and Assets on the PC, sync changed PNGs by SHA-256 and deploy to multiple USB phones.
 - Play, disable or delete a node directly from its card; double-click an edge to remove it.
 - Execute workflows on the phone after the computer disconnects.

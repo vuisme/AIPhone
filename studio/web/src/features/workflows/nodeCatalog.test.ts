@@ -10,3 +10,19 @@ describe('TAP_IMAGE defaults', () => {
     })
   })
 })
+
+describe('data and logic nodes', () => {
+  it('defines typed variable fields without requiring template syntax', () => {
+    const definition = nodeDefinition('SET_VARIABLE')
+
+    expect(definition.category).toBe('Dữ liệu')
+    expect(definition.fields.map((field) => field.key)).toEqual(['name', 'valueType', 'value'])
+  })
+
+  it('routes generic IF nodes through TRUE and FALSE outcomes', () => {
+    expect(nodeDefinition('IF').outcomes).toEqual([
+      { id: 'TRUE', label: 'Đúng' },
+      { id: 'FALSE', label: 'Sai' },
+    ])
+  })
+})

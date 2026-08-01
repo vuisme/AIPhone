@@ -30,6 +30,8 @@ data class RunSnapshot(
     val finishedAt: String? = null,
     val iteration: Int = 0,
     val logs: List<RunLogEntry> = emptyList(),
+    val variables: Map<String, RunValue> = emptyMap(),
+    val lastResult: NodeResult? = null,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -40,6 +42,8 @@ data class RunSnapshot(
         put("finishedAt", finishedAt ?: JSONObject.NULL)
         put("iteration", iteration)
         put("logs", JSONArray(logs.map { it.toJson() }))
+        put("variables", JSONObject().apply { variables.forEach { (name, value) -> put(name, value.toJson()) } })
+        put("lastResult", lastResult?.toJson() ?: JSONObject.NULL)
     }
 }
 
@@ -143,6 +147,8 @@ class WorkflowExecutor(
     private fun execute(runId: String, workflowId: String) {
         try {
             val document = JSONObject(store.readWorkflow(workflowId))
+            val context = RunContext.fromWorkflow(document)
+            status.updateAndGet { it.copy(variables = context.snapshot()) }
             val nodes = document.getJSONArray("nodes").asObjects().associateBy { it.getString("id") }
             val edges = document.getJSONArray("edges").asObjects().map {
                 WorkflowEdgeRoute(
@@ -167,18 +173,19 @@ class WorkflowExecutor(
                     check(maximum <= 0 || iteration < maximum) { "Loop limit of $maximum iterations reached" }
                 }
                 status.updateAndGet { it.copy(currentNodeId = nodeId, iteration = iteration) }
-                val outcome = (if (disabled) null else executeNode(node, runId, workflowId)).also {
+                val result = (if (disabled) null else executeNode(node, runId, workflowId, context)).also {
                     if (!disabled && nodeType == "LOOP") iteration++
                 }
                 if (disabled) appendLog("WARN", "Bỏ qua node đang disable", nodeId)
-                else appendLog("INFO", outcome?.let { "Kết quả: $it" } ?: "Node hoàn tất", nodeId)
+                else appendLog("INFO", result?.description() ?: "Node hoàn tất", nodeId)
+                status.updateAndGet { it.copy(variables = context.snapshot(), lastResult = result) }
 
                 when (nodeType.takeUnless { disabled }) {
                     "SUCCESS" -> return finish(RunState.SUCCESS, node.optJSONObject("config")?.optString("message", "Hoàn tất"))
                     "FAILURE" -> return finish(RunState.FAILED, node.optJSONObject("config")?.optString("message", "Workflow thất bại"))
                 }
 
-                val nextEdge = selectNextRoute(edges, nodeId, outcome, disabled)
+                val nextEdge = selectNextRoute(edges, nodeId, result?.outcome, disabled)
                 node = nodes[nextEdge.target] ?: error("Missing target node")
             }
             finish(RunState.STOPPED, "Đã dừng theo yêu cầu")
@@ -191,17 +198,20 @@ class WorkflowExecutor(
     private fun executeSingleNode(runId: String, workflowId: String, requestedNodeId: String) {
         try {
             val document = JSONObject(store.readWorkflow(workflowId))
+            val context = RunContext.fromWorkflow(document)
+            status.updateAndGet { it.copy(variables = context.snapshot()) }
             val nodes = document.getJSONArray("nodes").asObjects()
             val index = selectSingleNodeIndex(nodes.map { it.getString("id") }, requestedNodeId)
             val node = nodes[index]
             status.updateAndGet { it.copy(currentNodeId = requestedNodeId) }
             appendLog("INFO", "Chạy thử node ${node.getString("type")}", requestedNodeId)
-            val outcome = executeNode(node, runId, workflowId)
+            val result = executeNode(node, runId, workflowId, context)
+            status.updateAndGet { it.copy(variables = context.snapshot(), lastResult = result) }
             if (cancellation.get()) return finish(RunState.STOPPED, "Đã dừng chạy thử node")
-            appendLog("INFO", outcome?.let { "Kết quả: $it" } ?: "Node chạy thành công", requestedNodeId)
+            appendLog("INFO", result.description() ?: "Node chạy thành công", requestedNodeId)
             when (node.getString("type")) {
                 "FAILURE" -> finish(RunState.FAILED, node.optJSONObject("config")?.optString("message", "Node báo thất bại"))
-                else -> finish(RunState.SUCCESS, outcome?.let { "Kết quả node: $it" } ?: "Node chạy thành công")
+                else -> finish(RunState.SUCCESS, result.description() ?: "Node chạy thành công")
             }
         } catch (error: Throwable) {
             appendLog("ERROR", error.message ?: error.javaClass.simpleName, requestedNodeId)
@@ -209,38 +219,70 @@ class WorkflowExecutor(
         }
     }
 
-    private fun executeNode(node: JSONObject, runId: String, workflowId: String): String? {
+    private fun executeNode(node: JSONObject, runId: String, workflowId: String, context: RunContext): NodeResult {
         val type = node.getString("type")
         val config = node.optJSONObject("config") ?: JSONObject()
         return when (type) {
-            "START", "SUCCESS", "FAILURE" -> null
+            "START", "SUCCESS", "FAILURE" -> NodeResult()
             "DELAY" -> {
-                sleepCancellable(config.optLong("durationMs", 1000)); null
+                val duration = config.optLong("durationMs", 1000)
+                sleepCancellable(duration)
+                NodeResult(metadata = mapOf("durationMs" to duration))
             }
-            "WAIT_IMAGE" -> waitForImage(config, workflowId)
-            "IF_IMAGE" -> if (findImage(config, workflowId) != null) "FOUND" else "TIMEOUT"
-            "TAP_IMAGE" -> tapImage(config, workflowId)
-            "TAP_TEXT" -> tapText(config, workflowId)
+            "SET_VARIABLE" -> setVariable(config, context)
+            "IF" -> evaluateCondition(context, conditionSpec(config))
+            "LOG" -> {
+                val message = context.interpolate(config.optString("message"))
+                appendLog("INFO", message)
+                NodeResult(value = RunValue(WorkflowValueType.STRING, message))
+            }
+            "WAIT_IMAGE" -> NodeResult(outcome = waitForImage(config, workflowId))
+            "IF_IMAGE" -> NodeResult(outcome = if (findImage(config, workflowId) != null) "FOUND" else "TIMEOUT")
+            "TAP_IMAGE" -> NodeResult(outcome = tapImage(config, workflowId))
+            "TAP_TEXT" -> NodeResult(outcome = tapText(config, workflowId))
             "TAP_POINT" -> {
-                requireSuccess(tap(config.getInt("x"), config.getInt("y")).isSuccess, "Tap failed"); null
+                requireSuccess(tap(config.getInt("x"), config.getInt("y")).isSuccess, "Tap failed"); NodeResult()
             }
             "SWIPE" -> {
                 requireSuccess(
                     swipe(config.getInt("x1"), config.getInt("y1"), config.getInt("x2"), config.getInt("y2"), config.optInt("durationMs", 400)).isSuccess,
                     "Swipe failed",
-                ); null
+                ); NodeResult()
             }
-            "CREATE_CLONE" -> executeCommand(SafeCommands.createClone(packageName(config), userId(config)))
-            "DELETE_CLONE" -> executeCommand(SafeCommands.deleteClone(packageName(config), userId(config)))
-            "CLEAR_CLONE" -> executeCommand(SafeCommands.clearClone(packageName(config), userId(config)))
-            "FORCE_STOP_APP" -> executeCommand(SafeCommands.forceStop(packageName(config), userId(config)))
+            "CREATE_CLONE" -> { executeCommand(SafeCommands.createClone(packageName(config), userId(config))); NodeResult() }
+            "DELETE_CLONE" -> { executeCommand(SafeCommands.deleteClone(packageName(config), userId(config))); NodeResult() }
+            "CLEAR_CLONE" -> { executeCommand(SafeCommands.clearClone(packageName(config), userId(config))); NodeResult() }
+            "FORCE_STOP_APP" -> { executeCommand(SafeCommands.forceStop(packageName(config), userId(config))); NodeResult() }
             "LAUNCH_APP" -> launchApp(config)
             "CAPTURE" -> {
-                File(store.runDirectory, "$runId-${node.getString("id")}.png").writeBytes(RootGateway.captureScreen()); null
+                val output = File(store.runDirectory, "$runId-${node.getString("id")}.png")
+                output.writeBytes(RootGateway.captureScreen())
+                NodeResult(metadata = mapOf("fileName" to output.name))
             }
-            "LOOP" -> null
+            "LOOP" -> NodeResult()
             else -> error("Unsupported node type $type")
         }
+    }
+
+    private fun setVariable(config: JSONObject, context: RunContext): NodeResult {
+        val name = config.getString("name")
+        val type = WorkflowValueType.valueOf(config.optString("valueType", WorkflowValueType.STRING.name))
+        val value = RunValue.fromLiteral(type, config.opt("value"))
+        context.set(name, value)
+        return NodeResult(value = value, metadata = mapOf("name" to name))
+    }
+
+    private fun conditionSpec(config: JSONObject): ConditionSpec {
+        val left = ValueOperand.variable(config.getString("leftVariable"))
+        val operator = ConditionOperator.valueOf(config.optString("operator", ConditionOperator.EQUALS.name))
+        if (operator == ConditionOperator.IS_EMPTY || operator == ConditionOperator.IS_NOT_EMPTY) return ConditionSpec(left, operator)
+        val right = if (config.optString("rightSource", "LITERAL") == "VARIABLE") {
+            ValueOperand.variable(config.getString("rightVariable"))
+        } else {
+            val type = WorkflowValueType.valueOf(config.optString("rightType", WorkflowValueType.STRING.name))
+            ValueOperand.literal(type, config.opt("rightValue"))
+        }
+        return ConditionSpec(left, operator, right)
     }
 
     private fun waitForImage(config: JSONObject, workflowId: String): String {
@@ -326,14 +368,14 @@ class WorkflowExecutor(
         return null
     }
 
-    private fun launchApp(config: JSONObject): String? {
+    private fun launchApp(config: JSONObject): NodeResult {
         val packageName = packageName(config)
         val userId = userId(config)
         if (userId == 0 && !RootGateway.isRootGranted()) {
             val result = launchMainApp(packageName)
             if (result.text.isNotBlank()) appendLog(if (result.isSuccess) "INFO" else "ERROR", result.text)
             requireSuccess(result.isSuccess, result.text.ifBlank { "Cannot launch $packageName" })
-            return null
+            return NodeResult()
         }
         val resolved = RootGateway.executeSafe(SafeCommands.resolveLauncher(packageName, userId))
         if (resolved.text.isNotBlank()) appendLog(if (resolved.isSuccess) "INFO" else "ERROR", resolved.text)
@@ -342,7 +384,8 @@ class WorkflowExecutor(
             .map { it.trim() }
             .lastOrNull { it.startsWith("$packageName/") }
             ?: error("Cannot resolve launcher activity for $packageName in Android user $userId")
-        return executeCommand(SafeCommands.launchComponent(packageName, userId, component))
+        executeCommand(SafeCommands.launchComponent(packageName, userId, component))
+        return NodeResult()
     }
 
     private fun packageName(config: JSONObject) = config.optString("packageName", SafeCommands.TARGET_PACKAGE)

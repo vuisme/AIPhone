@@ -85,6 +85,45 @@ test('bridge-only server preserves CORS headers when ADB fails', async () => {
   })
 })
 
+test('bridge-only server exposes rootless screen capture and bounded tap input', async () => {
+  const calls = []
+  const bridge = {
+    listDevices: async () => [{ serial: 'phone', state: 'device' }],
+    captureScreen: async (serial) => { calls.push(['screen', serial]); return Buffer.from([0x89, 0x50, 0x4e, 0x47]) },
+    tap: async (serial, x, y) => { calls.push(['tap', serial, x, y]) },
+  }
+  await withServer({ bridge, bridgeOnly: true }, async (origin) => {
+    const headers = { Origin: 'http://127.0.0.1:4173' }
+    const screen = await fetch(`${origin}/bridge/devices/phone/screen`, { headers })
+    assert.equal(screen.status, 200)
+    assert.equal(screen.headers.get('content-type'), 'image/png')
+
+    const tap = await fetch(`${origin}/bridge/devices/phone/input/tap`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 120, y: 340 }),
+    })
+    assert.equal(tap.status, 200)
+    assert.deepEqual(calls, [['screen', 'phone'], ['tap', 'phone', 120, 340]])
+  })
+})
+
+test('bridge-only tap endpoint rejects invalid coordinates', async () => {
+  const bridge = {
+    listDevices: async () => [{ serial: 'phone', state: 'device' }],
+    tap: async () => { throw new Error('must not run') },
+  }
+  await withServer({ bridge, bridgeOnly: true }, async (origin) => {
+    const response = await fetch(`${origin}/bridge/devices/phone/input/tap`, {
+      method: 'POST',
+      headers: { Origin: 'http://127.0.0.1:4173', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: -1, y: 340 }),
+    })
+    assert.equal(response.status, 400)
+    assert.match((await response.json()).error, /coordinates/i)
+  })
+})
+
 test('bridge-only server persists canonical Studio workflows with local CORS', async () => {
   const bridge = { listDevices: async () => [] }
   const projectStore = new ProjectStore(await mkdtemp(path.join(os.tmpdir(), 'aiphone-http-store-')))

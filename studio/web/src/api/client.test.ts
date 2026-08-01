@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apiErrorMessage, buildAgentPath } from './client'
+import { apiErrorMessage, buildAgentPath, buildBridgeDevicePath } from './client'
 
 describe('buildAgentPath', () => {
   it('routes through the selected ADB serial', () => {
@@ -8,6 +8,12 @@ describe('buildAgentPath', () => {
 
   it('keeps direct Agent paths for the embedded Studio', () => {
     expect(buildAgentPath('/api/device', '')).toBe('/api/device')
+  })
+})
+
+describe('buildBridgeDevicePath', () => {
+  it('builds a host-side USB screen endpoint without going through the Agent API', () => {
+    expect(buildBridgeDevicePath('/screen', 'phone:5555')).toBe('/bridge/devices/phone%3A5555/screen')
   })
 })
 

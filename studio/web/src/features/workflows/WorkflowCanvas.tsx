@@ -16,9 +16,10 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import { Link2Off } from 'lucide-react'
-import type { NodeType, WorkflowDocument, WorkflowNode } from '../../contracts/workflow'
-import { NODE_CATALOG, nodeDefinition } from './nodeCatalog'
-import { androidUserOptions } from './androidUsers'
+import type { NodeType, WorkflowDocument, WorkflowNode, WorkflowParameter } from '../../contracts/workflow'
+import { NODE_CATALOG, nodeDefinition, type NodeCategory } from './nodeCatalog'
+import { NodeInspectorFields } from './NodeInspectorFields'
+import { WorkflowParametersEditor } from './WorkflowParametersEditor'
 import { WorkflowNodeCard, type WorkflowNodeData } from './WorkflowNodeCard'
 import { removeEdgeById, toggleNodeDisabled } from './workflowGraph'
 
@@ -72,7 +73,7 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
     setSelectedEdgeId((current) => workflow.edges.some((edge) => edge.id === current) ? current : undefined)
   }, [activeNodeId, workflow])
 
-  const publish = (nextNodes: Node<WorkflowNodeData>[], nextEdges: Edge[]) => {
+  const publish = (nextNodes: Node<WorkflowNodeData>[], nextEdges: Edge[], parameters: WorkflowParameter[] = workflow.parameters) => {
     setNodes(nextNodes)
     setEdges(nextEdges)
     const nextWorkflow: WorkflowDocument = {
@@ -80,6 +81,7 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
       revision: workflow.revision + 1,
       nodes: nextNodes.map(toWorkflowNode),
       edges: nextEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle ?? undefined })),
+      parameters,
       updatedAt: new Date().toISOString(),
     }
     lastPublishedWorkflow.current = nextWorkflow
@@ -180,7 +182,11 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
     return () => window.removeEventListener('keydown', onKeyDown)
   })
 
-  const categories = useMemo(() => ['Luồng', 'Hình ảnh', 'Ứng dụng'] as const, [])
+  const categories = useMemo<NodeCategory[]>(() => ['Luồng', 'Dữ liệu', 'Hình ảnh', 'Ứng dụng'], [])
+  const variables = useMemo(() => Array.from(new Set([
+    ...workflow.parameters.map((parameter) => parameter.name),
+    ...nodes.filter((node) => node.data.nodeType === 'SET_VARIABLE').map((node) => String(node.data.config.name ?? '')).filter(Boolean),
+  ])).sort(), [nodes, workflow.parameters])
 
   return (
     <div className="builder-shell">
@@ -284,52 +290,10 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
               <strong>{selectedDefinition.label}</strong>
               <code>{selectedNode.id}</code>
             </div>
-            {['WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE', 'TAP_TEXT'].includes(selectedNode.data.nodeType) && (
-              <label>Asset
-                <select value={String(selectedNode.data.config.assetId ?? '')} onChange={(event) => updateConfig('assetId', event.target.value)}>
-                  <option value="">Chọn Asset...</option>
-                  {workflow.assets.filter((asset) => selectedNode.data.nodeType === 'TAP_TEXT' ? asset.type === 'UI_SELECTOR' : asset.type === 'IMAGE').map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-                </select>
-              </label>
-            )}
-            {'threshold' in selectedNode.data.config && (
-              <label>Độ tin cậy
-                <div className="range-row"><input type="range" min="0.5" max="1" step="0.01" value={Number(selectedNode.data.config.threshold)} onChange={(event) => updateConfig('threshold', Number(event.target.value))} /><output>{Math.round(Number(selectedNode.data.config.threshold) * 100)}%</output></div>
-              </label>
-            )}
-            {selectedNode.data.nodeType === 'TAP_IMAGE' && (
-              <>
-                <label className="checkbox-label"><input type="checkbox" checked={selectedNode.data.config.verifyTap !== false} onChange={(event) => updateConfig('verifyTap', event.target.checked)} /> Xác nhận ảnh biến mất sau khi bấm</label>
-                <label>Lệch tâm X (px)<input type="number" value={Number(selectedNode.data.config.offsetX ?? 0)} onChange={(event) => updateConfig('offsetX', Number(event.target.value))} /></label>
-                <label>Lệch tâm Y (px)<input type="number" value={Number(selectedNode.data.config.offsetY ?? 0)} onChange={(event) => updateConfig('offsetY', Number(event.target.value))} /></label>
-                <label>Số lần thử bấm<input type="number" min="1" max="5" value={Number(selectedNode.data.config.tapAttempts ?? 2)} onChange={(event) => updateConfig('tapAttempts', Number(event.target.value))} /></label>
-                <label>Chờ xác nhận (ms)<input type="number" min="100" max="5000" value={Number(selectedNode.data.config.tapVerificationDelayMs ?? 700)} onChange={(event) => updateConfig('tapVerificationDelayMs', Number(event.target.value))} /></label>
-              </>
-            )}
-            {'timeoutMs' in selectedNode.data.config && (
-              <label>Timeout (ms)<input type="number" min="100" value={Number(selectedNode.data.config.timeoutMs)} onChange={(event) => updateConfig('timeoutMs', Number(event.target.value))} /></label>
-            )}
-            {'durationMs' in selectedNode.data.config && (
-              <label>Thời gian chờ (ms)<input type="number" min="0" value={Number(selectedNode.data.config.durationMs)} onChange={(event) => updateConfig('durationMs', Number(event.target.value))} /></label>
-            )}
-            {'maxIterations' in selectedNode.data.config && (
-              <label>Số vòng tối đa<input type="number" min="0" value={Number(selectedNode.data.config.maxIterations)} onChange={(event) => updateConfig('maxIterations', Number(event.target.value))} /><small>0 = không giới hạn</small></label>
-            )}
-            {'packageName' in selectedNode.data.config && (
-              <label>Package<input value={String(selectedNode.data.config.packageName)} onChange={(event) => updateConfig('packageName', event.target.value)} /></label>
-            )}
-            {'userId' in selectedNode.data.config && (
-              <label>Chạy trên
-                <select value={Number(selectedNode.data.config.userId)} onChange={(event) => updateConfig('userId', Number(event.target.value))}>
-                  {androidUserOptions(selectedNode.data.nodeType).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-              </label>
-            )}
-            {'message' in selectedNode.data.config && (
-              <label>Thông báo<input value={String(selectedNode.data.config.message)} onChange={(event) => updateConfig('message', event.target.value)} /></label>
-            )}
+            <NodeInspectorFields definition={selectedDefinition} nodeType={selectedNode.data.nodeType} config={selectedNode.data.config} assets={workflow.assets} variables={variables} onChange={updateConfig} />
           </div>
         )}
+        <WorkflowParametersEditor parameters={workflow.parameters} onChange={(parameters) => publish(nodes, edges, parameters)} />
       </aside>
     </div>
   )

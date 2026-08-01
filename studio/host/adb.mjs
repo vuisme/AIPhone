@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 export function parseAdbDevices(output) {
   return output
@@ -64,9 +65,9 @@ export class AdbBridge {
     this.forwardedPorts = new Map()
   }
 
-  async command(args) {
+  async command(args, overrides = {}) {
     const executable = this.adbPath || await resolveAdbPath()
-    return this.run(executable, args, { windowsHide: true, timeout: 15_000, maxBuffer: 1024 * 1024 })
+    return this.run(executable, args, { windowsHide: true, timeout: 15_000, maxBuffer: 1024 * 1024, encoding: 'utf8', ...overrides })
   }
 
   async listDevices() {
@@ -98,5 +99,23 @@ export class AdbBridge {
 
   forgetForward(serial) {
     this.forwardedPorts.delete(serial)
+  }
+
+  async captureScreen(serial) {
+    requireConnectedSerial(await this.listDevices(), serial)
+    const { stdout } = await this.command(
+      ['-s', serial, 'exec-out', 'screencap', '-p'],
+      { encoding: 'buffer', timeout: 10_000, maxBuffer: 32 * 1024 * 1024 },
+    )
+    const bytes = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
+    if (bytes.length <= PNG_SIGNATURE.length || !bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+      throw new Error('ADB screencap did not return a PNG image')
+    }
+    return bytes
+  }
+
+  async tap(serial, x, y) {
+    requireConnectedSerial(await this.listDevices(), serial)
+    await this.command(['-s', serial, 'shell', 'input', 'tap', String(x), String(y)])
   }
 }

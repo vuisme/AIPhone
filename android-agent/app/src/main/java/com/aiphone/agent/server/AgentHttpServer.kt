@@ -3,6 +3,7 @@ package com.aiphone.agent.server
 import android.content.Context
 import android.os.Build
 import com.aiphone.agent.BuildConfig
+import com.aiphone.agent.AutomationService
 import com.aiphone.agent.accessibility.AIPhoneAccessibilityService
 import com.aiphone.agent.accessibility.AccessibilityController
 import com.aiphone.agent.root.RootGateway
@@ -158,16 +159,27 @@ class AgentHttpServer(
 
     private fun deviceHealth(): HttpResponse {
         val metrics = context.resources.displayMetrics
+        val rootGranted = RootGateway.isRootGranted()
+        val accessibilityReady = AccessibilityController.isReady()
         val body = JSONObject().apply {
             put("model", Build.MODEL)
             put("androidVersion", Build.VERSION.RELEASE)
             put("hyperOsVersion", Build.VERSION.INCREMENTAL)
-            put("rootGranted", RootGateway.isRootGranted())
+            put("rootGranted", rootGranted)
             put("serverVersion", BuildConfig.VERSION_NAME)
             put("displayWidth", metrics.widthPixels)
             put("displayHeight", metrics.heightPixels)
             put("cloneUserId", SafeCommands.CLONE_USER_ID)
-            put("accessibilityReady", AccessibilityController.isReady())
+            put("accessibilityReady", accessibilityReady)
+            put("accessibilityEnabled", AccessibilityController.isEnabled(context))
+            put("serviceRunning", AutomationService.isRunning)
+            put("capabilities", JSONObject()
+                .put("workflowStorage", true)
+                .put("mainUserLaunch", true)
+                .put("accessibilityInput", rootGranted || accessibilityReady)
+                .put("imageMatching", rootGranted)
+                .put("xspace", rootGranted)
+                .put("silentUpdate", rootGranted))
         }
         return HttpResponse.json(body = body)
     }

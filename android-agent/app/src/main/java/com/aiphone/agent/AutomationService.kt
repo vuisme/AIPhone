@@ -12,6 +12,7 @@ import com.aiphone.agent.server.AgentHttpServer
 import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.workflow.WorkflowExecutor
 import com.aiphone.agent.accessibility.AccessibilityController
+import com.aiphone.agent.root.CommandResult
 
 class AutomationService : Service() {
     private var server: AgentHttpServer? = null
@@ -19,6 +20,7 @@ class AutomationService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         createNotificationChannel()
         val openIntent = PendingIntent.getActivity(
             this,
@@ -36,7 +38,11 @@ class AutomationService : Service() {
         startForeground(NOTIFICATION_ID, notification)
 
         val store = AgentStore(this)
-        val executor = WorkflowExecutor(store) { AccessibilityController.ensureEnabled(this) }
+        val executor = WorkflowExecutor(
+            store = store,
+            ensureAccessibility = { AccessibilityController.ensureEnabled(this) },
+            launchMainApp = ::launchMainPackage,
+        )
         server = AgentHttpServer(this, store, executor).also { it.start() }
     }
 
@@ -54,6 +60,7 @@ class AutomationService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         server?.stop()
         releaseRunWakeLock()
         super.onDestroy()
@@ -61,6 +68,14 @@ class AutomationService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun launchMainPackage(packageName: String): CommandResult = runCatching {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            ?: return CommandResult(-1, "No launcher activity for $packageName".toByteArray())
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(launchIntent)
+        CommandResult(0, "Launched $packageName as main user".toByteArray())
+    }.getOrElse { CommandResult(-1, (it.message ?: it.javaClass.simpleName).toByteArray()) }
 
     private fun createNotificationChannel() {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
@@ -70,6 +85,8 @@ class AutomationService : Service() {
     }
 
     companion object {
+        @Volatile var isRunning: Boolean = false
+            private set
         private const val CHANNEL_ID = "aiphone_agent"
         private const val NOTIFICATION_ID = 1201
     }

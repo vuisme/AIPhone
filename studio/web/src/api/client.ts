@@ -74,6 +74,16 @@ export interface DeviceHealth {
   displayHeight: number
   cloneUserId: number
   accessibilityReady: boolean
+  accessibilityEnabled?: boolean
+  serviceRunning?: boolean
+  capabilities?: {
+    workflowStorage: boolean
+    mainUserLaunch: boolean
+    accessibilityInput: boolean
+    imageMatching: boolean
+    xspace: boolean
+    silentUpdate: boolean
+  }
 }
 
 export interface RunStatus {

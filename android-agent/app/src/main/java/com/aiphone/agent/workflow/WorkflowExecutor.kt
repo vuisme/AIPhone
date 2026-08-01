@@ -60,6 +60,7 @@ data class RunLogEntry(
 class WorkflowExecutor(
     private val store: AgentStore,
     private val ensureAccessibility: () -> Boolean = { AIPhoneAccessibilityService.instance != null },
+    private val launchMainApp: (String) -> com.aiphone.agent.root.CommandResult = { com.aiphone.agent.root.CommandResult(-1, "Main-user launch is unavailable".toByteArray()) },
 ) {
     private val status = AtomicReference(RunSnapshot())
     private val cancellation = AtomicBoolean(false)
@@ -67,6 +68,7 @@ class WorkflowExecutor(
     @Synchronized
     fun start(workflowId: String): RunSnapshot {
         validateWorkflowId(workflowId)
+        validateCapabilities(workflowId)
         val initial = beginRun()
         thread(name = "AIPhone-Workflow", isDaemon = true) { execute(initial.id, workflowId) }
         return initial
@@ -76,6 +78,7 @@ class WorkflowExecutor(
     fun startNodeTest(workflowId: String, nodeId: String): RunSnapshot {
         validateWorkflowId(workflowId)
         require(nodeId.isNotBlank()) { "Node id is required" }
+        validateCapabilities(workflowId, nodeId)
         val initial = beginRun()
         thread(name = "AIPhone-Node-Test", isDaemon = true) { executeSingleNode(initial.id, workflowId, nodeId) }
         return initial
@@ -105,6 +108,36 @@ class WorkflowExecutor(
 
     private fun validateWorkflowId(workflowId: String) {
         require(store.hasWorkflow(workflowId)) { "Unknown workflow $workflowId" }
+    }
+
+    private fun validateCapabilities(workflowId: String, onlyNodeId: String? = null) {
+        val document = JSONObject(store.readWorkflow(workflowId))
+        val nodes = document.getJSONArray("nodes").asObjects().filter { !it.optBoolean("disabled", false) && (onlyNodeId == null || it.getString("id") == onlyNodeId) }
+        if (onlyNodeId != null) require(nodes.isNotEmpty()) { "Unknown or disabled node $onlyNodeId" }
+        val hasRoot = RootGateway.isRootGranted()
+        val needsAccessibility = nodes.any {
+            when (NodeCapabilityPolicy.requirement(it.getString("type"), capabilityUserId(it))) {
+                NodeRequirement.ACCESSIBILITY -> true
+                NodeRequirement.ACCESSIBILITY_OR_ROOT -> !hasRoot
+                else -> false
+            }
+        }
+        val hasAccessibility = !needsAccessibility || ensureAccessibility()
+        val issues = nodes.mapNotNull {
+            NodeCapabilityPolicy.validate(
+                nodeType = it.getString("type"),
+                androidUserId = capabilityUserId(it),
+                hasRoot = hasRoot,
+                hasAccessibility = hasAccessibility,
+            )?.let { message -> "${it.getString("id")}: $message" }
+        }
+        require(issues.isEmpty()) { issues.joinToString("; ") }
+    }
+
+    private fun capabilityUserId(node: JSONObject): Int {
+        val type = node.getString("type")
+        val fallback = if (type in setOf("LAUNCH_APP", "FORCE_STOP_APP", "CREATE_CLONE", "DELETE_CLONE", "CLEAR_CLONE")) SafeCommands.CLONE_USER_ID else 0
+        return node.optJSONObject("config")?.optInt("userId", fallback) ?: fallback
     }
 
     private fun execute(runId: String, workflowId: String) {
@@ -189,11 +222,11 @@ class WorkflowExecutor(
             "TAP_IMAGE" -> tapImage(config, workflowId)
             "TAP_TEXT" -> tapText(config, workflowId)
             "TAP_POINT" -> {
-                requireSuccess(RootGateway.tap(config.getInt("x"), config.getInt("y")).isSuccess, "Tap failed"); null
+                requireSuccess(tap(config.getInt("x"), config.getInt("y")).isSuccess, "Tap failed"); null
             }
             "SWIPE" -> {
                 requireSuccess(
-                    RootGateway.swipe(config.getInt("x1"), config.getInt("y1"), config.getInt("x2"), config.getInt("y2"), config.optInt("durationMs", 400)).isSuccess,
+                    swipe(config.getInt("x1"), config.getInt("y1"), config.getInt("x2"), config.getInt("y2"), config.optInt("durationMs", 400)).isSuccess,
                     "Swipe failed",
                 ); null
             }
@@ -222,6 +255,7 @@ class WorkflowExecutor(
     }
 
     private fun findImage(config: JSONObject, workflowId: String): Match? {
+        check(RootGateway.isRootGranted()) { "Image matching requires root; MediaProjection is not configured" }
         val assetId = config.optString("assetId").ifBlank { config.optString("templateId") }
         require(assetId.isNotBlank()) { "Image Asset is required" }
         val file = store.assetFile(workflowId, assetId)
@@ -240,7 +274,7 @@ class WorkflowExecutor(
 
     private fun tapImage(config: JSONObject, workflowId: String): String = TapImageRunner(
         findImage = { findImage(config, workflowId) },
-        tap = RootGateway::tap,
+        tap = ::tap,
         delay = ::sleepCancellable,
         log = { level, message -> appendLog(level, message) },
         isCancelled = cancellation::get,
@@ -274,7 +308,7 @@ class WorkflowExecutor(
         )
         return TapTextRunner(
             click = { AIPhoneAccessibilityService.instance?.click(selector) ?: error("AIPhone UI Inspector disconnected") },
-            tap = RootGateway::tap,
+            tap = ::tap,
             delay = ::sleepCancellable,
             log = { level, message -> appendLog(level, message) },
             isCancelled = cancellation::get,
@@ -285,6 +319,7 @@ class WorkflowExecutor(
     }
 
     private fun executeCommand(args: List<String>): String? {
+        check(RootGateway.isRootGranted()) { "Root command requires KernelSU permission" }
         val result = RootGateway.executeSafe(args)
         if (result.text.isNotBlank()) appendLog(if (result.isSuccess) "INFO" else "ERROR", result.text)
         requireSuccess(result.isSuccess, result.text.ifBlank { "Root command failed" })
@@ -294,6 +329,12 @@ class WorkflowExecutor(
     private fun launchApp(config: JSONObject): String? {
         val packageName = packageName(config)
         val userId = userId(config)
+        if (userId == 0 && !RootGateway.isRootGranted()) {
+            val result = launchMainApp(packageName)
+            if (result.text.isNotBlank()) appendLog(if (result.isSuccess) "INFO" else "ERROR", result.text)
+            requireSuccess(result.isSuccess, result.text.ifBlank { "Cannot launch $packageName" })
+            return null
+        }
         val resolved = RootGateway.executeSafe(SafeCommands.resolveLauncher(packageName, userId))
         if (resolved.text.isNotBlank()) appendLog(if (resolved.isSuccess) "INFO" else "ERROR", resolved.text)
         requireSuccess(resolved.isSuccess, resolved.text.ifBlank { "Cannot resolve launcher activity" })
@@ -314,6 +355,22 @@ class WorkflowExecutor(
             Thread.sleep(chunk)
             remaining -= chunk
         }
+    }
+
+    private fun tap(x: Int, y: Int): com.aiphone.agent.root.CommandResult {
+        if (RootGateway.isRootGranted()) return RootGateway.tap(x, y)
+        val service = AIPhoneAccessibilityService.instance
+            ?: return com.aiphone.agent.root.CommandResult(-1, "AIPhone UI Inspector is not enabled".toByteArray())
+        return if (service.tap(x, y)) com.aiphone.agent.root.CommandResult(0, byteArrayOf())
+        else com.aiphone.agent.root.CommandResult(-1, "Accessibility tap failed at ($x, $y)".toByteArray())
+    }
+
+    private fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int): com.aiphone.agent.root.CommandResult {
+        if (RootGateway.isRootGranted()) return RootGateway.swipe(x1, y1, x2, y2, durationMs)
+        val service = AIPhoneAccessibilityService.instance
+            ?: return com.aiphone.agent.root.CommandResult(-1, "AIPhone UI Inspector is not enabled".toByteArray())
+        return if (service.swipe(x1, y1, x2, y2, durationMs)) com.aiphone.agent.root.CommandResult(0, byteArrayOf())
+        else com.aiphone.agent.root.CommandResult(-1, "Accessibility swipe failed".toByteArray())
     }
 
     private fun requireSuccess(condition: Boolean, message: String) {

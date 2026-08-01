@@ -19,6 +19,7 @@ object AccessibilityController {
     fun ensureEnabled(context: Context): Boolean {
         if (isReady()) return true
         if (!isEnabled(context)) {
+            if (!RootGateway.isRootGranted()) return false
             val component = ComponentName(context, AIPhoneAccessibilityService::class.java).flattenToString()
             val current = RootGateway.executeSafe(listOf("settings", "get", "secure", "enabled_accessibility_services"))
             check(current.isSuccess) { current.text.ifBlank { "Cannot read accessibility settings" } }

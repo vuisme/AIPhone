@@ -1,13 +1,17 @@
 package com.aiphone.agent.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.graphics.Path
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 data class UiClickResult(
     val found: Boolean,
@@ -111,6 +115,32 @@ class AIPhoneAccessibilityService : AccessibilityService() {
             clickable = clickable.parent
         }
         return UiClickResult(true, false, bounds.centerX(), bounds.centerY(), matched.toDescriptor().label())
+    }
+
+    fun tap(x: Int, y: Int): Boolean = dispatchPath(Path().apply { moveTo(x.toFloat(), y.toFloat()) }, 1)
+
+    fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int): Boolean = dispatchPath(
+        Path().apply { moveTo(x1.toFloat(), y1.toFloat()); lineTo(x2.toFloat(), y2.toFloat()) },
+        durationMs.coerceIn(1, 60_000),
+    )
+
+    private fun dispatchPath(path: Path, durationMs: Int): Boolean {
+        val completed = CountDownLatch(1)
+        var succeeded = false
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.toLong()))
+            .build()
+        val accepted = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                succeeded = true
+                completed.countDown()
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                completed.countDown()
+            }
+        }, null)
+        return accepted && completed.await(durationMs.toLong() + 2_000, TimeUnit.MILLISECONDS) && succeeded
     }
 
     private fun AccessibilityNodeInfo.toDescriptor() = UiNodeDescriptor(

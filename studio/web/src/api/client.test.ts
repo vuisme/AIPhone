@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { apiErrorMessage, buildAgentPath, buildBridgeDevicePath } from './client'
+import { apiErrorMessage, buildAgentPath, buildBridgeDevicePath, isStandaloneLocation } from './client'
+
+describe('isStandaloneLocation', () => {
+  it('treats a secure same-origin deployment as account-aware Studio', () => {
+    expect(isStandaloneLocation({ protocol: 'https:', port: '' }, '')).toBe(true)
+  })
+
+  it('keeps the Android Agent HTTP origin in embedded mode', () => {
+    expect(isStandaloneLocation({ protocol: 'http:', port: '8765' }, '')).toBe(false)
+  })
+})
 
 describe('buildAgentPath', () => {
   it('routes through the selected ADB serial', () => {

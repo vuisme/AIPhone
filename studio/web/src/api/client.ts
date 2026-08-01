@@ -49,8 +49,12 @@ export function setAgentDeviceSerial(serial: string) {
   pairingToken = sessionStorage.getItem(tokenKey(serial)) ?? ''
 }
 
+export function isStandaloneLocation(location: Pick<Location, 'protocol' | 'port'>, bridgeOrigin: string): boolean {
+  return bridgeOrigin.length > 0 || location.port === '4173' || location.protocol === 'https:'
+}
+
 export function isStandaloneStudio(): boolean {
-  return BRIDGE_ORIGIN.length > 0 || window.location.port === '4173'
+  return isStandaloneLocation(window.location, BRIDGE_ORIGIN)
 }
 
 export function setAgentToken(value: string, serial = selectedSerial) {

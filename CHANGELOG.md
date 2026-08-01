@@ -42,6 +42,7 @@
 - Capture the primary physical display explicitly on multi-display Xiaomi devices.
 - Log image-match bounds and tap coordinates, retry failed taps, and stop false `FOUND` results when the target image remains visible.
 - Serve the full Studio login shell without requiring an authenticated workflow request context.
+- Detect HTTPS Cloud Studio origins as account-aware deployments instead of opening the embedded Agent pairing UI.
 
 ## [0.1.5] - 2026-07-31
 

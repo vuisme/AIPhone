@@ -1,6 +1,7 @@
 package com.aiphone.agent.root
 
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 data class CommandResult(val exitCode: Int, val output: ByteArray) {
@@ -54,6 +55,15 @@ object RootGateway {
 
     fun executeSafe(args: List<String>): CommandResult = runRoot(args)
 
+    fun installDownloadedPackage(apkFile: File, allowedDirectory: File): CommandResult {
+        val target = apkFile.canonicalFile
+        val directory = allowedDirectory.canonicalFile
+        require(target.isFile && target.name == "aiphone-update.apk") { "Update APK is invalid" }
+        require(target.parentFile == directory) { "Update APK is outside the app update directory" }
+        require(target.length() in 1..MAX_UPDATE_APK_BYTES) { "Update APK size is invalid" }
+        return runRoot(listOf("pm", "install", "-r", "--user", "0", target.absolutePath), timeoutSeconds = 120)
+    }
+
     private fun runRoot(args: List<String>, timeoutSeconds: Long = 15, mergeError: Boolean = true): CommandResult {
         val command = args.joinToString(" ") { shellQuote(it) }
         return runProcess(listOf("su", "-c", command), timeoutSeconds, mergeError)
@@ -83,4 +93,6 @@ object RootGateway {
     }
 
     private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
+
+    private const val MAX_UPDATE_APK_BYTES = 150L * 1024 * 1024
 }

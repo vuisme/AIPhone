@@ -3,19 +3,49 @@ name: Build Android APK
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
-permissions:
-  contents: read
+concurrency:
+  group: android-apk-${{ github.ref == 'refs/heads/main' && 'nightly' || github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
 
 jobs:
   build:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      apk-name: ${{ steps.release-meta.outputs.apk-name }}
+      studio-name: ${{ steps.release-meta.outputs.studio-name }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: release-meta
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Stable tags must use vMAJOR.MINOR.PATCH."
+              exit 1
+            fi
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+            APK_NAME="AIPhone-${GITHUB_REF_NAME}-vc${GITHUB_RUN_NUMBER}.apk"
+            STUDIO_NAME="AIPhone-Studio-${GITHUB_REF_NAME}-vc${GITHUB_RUN_NUMBER}.zip"
+          else
+            VERSION_NAME="0.2.0-nightly.${GITHUB_RUN_NUMBER}"
+            APK_NAME="AIPhone-nightly-vc${GITHUB_RUN_NUMBER}.apk"
+            STUDIO_NAME="AIPhone-Studio-nightly-vc${GITHUB_RUN_NUMBER}.zip"
+          fi
+          echo "AIPHONE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
+          echo "STUDIO_NAME=$STUDIO_NAME" >> "$GITHUB_ENV"
+          echo "apk-name=$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "studio-name=$STUDIO_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -86,11 +116,11 @@ jobs:
           APK="android-agent/app/build/outputs/apk/release/app-release.apk"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
           mkdir -p artifacts
-          cp "$APK" "artifacts/AIPhone-v0.1.${GITHUB_RUN_NUMBER}.apk"
+          cp "$APK" "artifacts/$APK_NAME"
 
       - name: Package standalone Studio
         run: |
-          PACKAGE="artifacts/AIPhone-Studio-v0.1.${GITHUB_RUN_NUMBER}"
+          PACKAGE="artifacts/AIPhone-Studio-${AIPHONE_VERSION_NAME}"
           mkdir -p "$PACKAGE/studio/host" "$PACKAGE/studio/web"
           cp studio/host/adb.mjs studio/host/project-store.mjs studio/host/server.mjs studio/host/package.json "$PACKAGE/studio/host/"
           cp -R studio/web/dist studio/web/public studio/web/src "$PACKAGE/studio/web/"
@@ -99,20 +129,70 @@ jobs:
           cp .dockerignore "$PACKAGE/.dockerignore"
           cp README.md "$PACKAGE/README.md"
           cd artifacts
-          zip -r "AIPhone-Studio-v0.1.${GITHUB_RUN_NUMBER}.zip" "AIPhone-Studio-v0.1.${GITHUB_RUN_NUMBER}"
+          zip -r "$STUDIO_NAME" "$(basename "$PACKAGE")"
 
-      - name: Upload APK
+      - name: Upload signed build bundle
         uses: actions/upload-artifact@v4
         with:
-          name: AIPhone-APK-v0.1.${{ github.run_number }}
-          path: artifacts/*.apk
+          name: AIPhone-build-vc${{ github.run_number }}
+          path: |
+            artifacts/${{ steps.release-meta.outputs.apk-name }}
+            artifacts/${{ steps.release-meta.outputs.studio-name }}
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload standalone Studio
-        uses: actions/upload-artifact@v4
+  publish:
+    if: github.event_name == 'push'
+    needs: build
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download signed build bundle
+        uses: actions/download-artifact@v4
         with:
-          name: AIPhone-Studio-v0.1.${{ github.run_number }}
-          path: artifacts/AIPhone-Studio-v0.1.${{ github.run_number }}.zip
-          if-no-files-found: error
-          retention-days: 30
+          name: AIPhone-build-vc${{ github.run_number }}
+          path: artifacts
+
+      - name: Publish immutable Stable release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+          APK_NAME: ${{ needs.build.outputs.apk-name }}
+          STUDIO_NAME: ${{ needs.build.outputs.studio-name }}
+        run: |
+          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Stable release $TAG_NAME already exists and is immutable."
+            exit 1
+          fi
+          gh release create "$TAG_NAME" \
+            "artifacts/$APK_NAME" \
+            "artifacts/$STUDIO_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "AIPhone $TAG_NAME" \
+            --generate-notes \
+            --verify-tag
+
+      - name: Replace opt-in Nightly prerelease
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_NAME: ${{ needs.build.outputs.apk-name }}
+          STUDIO_NAME: ${{ needs.build.outputs.studio-name }}
+        run: |
+          if gh release view nightly --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete nightly --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          else
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/nightly" >/dev/null 2>&1 || true
+          fi
+          gh release create nightly \
+            "artifacts/$APK_NAME" \
+            "artifacts/$STUDIO_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "AIPhone Nightly vc${GITHUB_RUN_NUMBER}" \
+            --notes "Automated opt-in test build from main at $GITHUB_SHA." \
+            --prerelease

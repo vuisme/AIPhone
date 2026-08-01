@@ -4,6 +4,7 @@ plugins {
 }
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+val ciVersionName = System.getenv("AIPHONE_VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "0.1.$ciVersionCode"
 val signingStore = System.getenv("SIGNING_STORE_FILE")
 
 android {
@@ -15,7 +16,7 @@ android {
         minSdk = 30
         targetSdk = 36
         versionCode = ciVersionCode
-        versionName = "0.1.$ciVersionCode"
+        versionName = ciVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

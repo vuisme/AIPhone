@@ -1,6 +1,6 @@
 # AIPhone
 
-AIPhone is a rooted Android visual-automation agent with a browser-based no-code workflow Studio. It is designed for Unity/SurfaceView applications where Android's accessibility tree cannot expose internal buttons.
+AIPhone is an Android automation Agent with a browser-based no-code workflow Studio. It supports accessibility workflows without root and uses root when available for screenshots, image matching and Xiaomi HyperOS XSpace operations.
 
 ## MVP capabilities
 
@@ -10,17 +10,19 @@ AIPhone is a rooted Android visual-automation agent with a browser-based no-code
 - Replace image Assets without rebuilding the APK.
 - Inspect accessible Android/WebView text over the live screenshot and create `TAP_TEXT` nodes visually.
 - Run Studio independently on the PC and choose a connected USB phone by ADB serial.
+- Keep canonical workflows and Assets on the PC, sync changed PNGs by SHA-256 and deploy to multiple USB phones.
 - Play, disable or delete a node directly from its card; double-click an edge to remove it.
 - Execute workflows on the phone after the computer disconnects.
 - Image wait/condition/tap nodes using on-device pixel matching.
 - Typed root operations for Xiaomi HyperOS XSpace user `999`.
-- Signed GitHub Actions APK builds with monotonically increasing version codes.
+- Root-optional main-user launch and Accessibility tap, swipe and text actions.
+- Signed Stable and Nightly GitHub Releases with monotonically increasing version codes.
 
 The initial target is `com.garena.game.kgvn` on Xiaomi HyperOS 3 with KernelSU. The project does not inject into or inspect game memory and is not intended for in-match automation.
 
 ## Build
 
-Android builds run on GitHub Actions; no local Android SDK is required. The workflow builds Studio, bundles it into the APK, runs unit tests, signs the release, verifies the signature and uploads the APK artifact.
+Android builds run on GitHub Actions; no local Android SDK is required. Every push to `main` publishes an opt-in `nightly` prerelease. A semantic tag such as `v0.2.0` publishes an immutable Stable release.
 
 Required repository secrets:
 
@@ -31,18 +33,18 @@ Required repository secrets:
 
 ## Install and update
 
-Download the latest signed APK from the repository's [Releases](https://github.com/vuisme/AIPhone/releases) page.
+Download the latest signed Stable APK from the repository's [Releases](https://github.com/vuisme/AIPhone/releases) page, or select Stable/Nightly from the Android Agent dashboard and tap **Kiểm tra bản cập nhật**. Rooted phones can install silently; non-root phones use Android's confirmation screen.
 
 Connect the phone with USB debugging enabled:
 
 ```powershell
-.\adb-tool\adb.exe install AIPhone-v0.1.5.apk
+.\adb-tool\adb.exe install AIPhone-v0.2.0-vc42.apk
 ```
 
 Future versions use the same application ID and GitHub signing key. Install them over the existing app while preserving data:
 
 ```powershell
-.\adb-tool\adb.exe install -r AIPhone-v0.1.5.apk
+.\adb-tool\adb.exe install -r AIPhone-v0.2.0-vc42.apk
 ```
 
 Do not uninstall the existing app if its local workflows and Assets must be preserved.
@@ -82,7 +84,7 @@ npm --prefix studio/web run build
 
 Then:
 
-1. Open `AIPhone Agent` on Android and grant root in KernelSU Manager.
+1. Open `AIPhone Agent`; enable its service and Accessibility permission. Grant KernelSU root only for image/XSpace workflows.
 2. Enable USB debugging and accept the computer's RSA key.
 3. Open `http://127.0.0.1:4173` if it did not open automatically.
 4. Select the phone shown by model and ADB serial.
@@ -104,6 +106,8 @@ The PC host creates a separate ADB forward for the selected serial. The Agent re
 
 - The Agent listens on device loopback only; the desktop host manages ADB forwarding.
 - Every API request requires the random pairing token shown by the Android app.
+- Pairing tokens stay scoped to one ADB serial and are never stored in workflow data.
 - Studio cannot send arbitrary shell commands.
 - Clone actions are restricted to package `com.garena.game.kgvn` and user `999`.
+- The updater accepts only fixed `vuisme/AIPhone` GitHub Release URLs and verifies package name, version code and signing certificate.
 - Signing keys are stored only in GitHub Secrets.

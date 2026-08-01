@@ -11,11 +11,17 @@
 - Workflow-scoped `IMAGE` and `UI_SELECTOR` Assets with a dedicated Asset Library.
 - Capture Lab text/XML inspector with live accessibility bounds over the phone screenshot.
 - `TAP_TEXT` nodes that use semantic Accessibility clicks and fall back to root bounds taps.
+- Canonical PC workflow storage, SHA-256 Asset sync and bulk USB deployment/run status.
+- Root-optional Agent capabilities for Accessibility input and main-user app launch.
+- Modern Android Agent dashboard with service control, capability status and pairing details.
+- Stable/Nightly in-app updater restricted to signed APKs from the AIPhone GitHub repository.
+- GitHub release automation for opt-in Nightly builds and immutable semantic-version Stable builds.
 
 ### Changed
 
 - Grouped the React editor and desktop USB bridge under a single `studio/` project directory.
 - Migrated the canonical workflow contract to `assets/assetId` while preserving legacy template data.
+- Phones now act as offline deployment targets while the Studio Host owns canonical workflow and Asset data.
 
 ### Fixed
 

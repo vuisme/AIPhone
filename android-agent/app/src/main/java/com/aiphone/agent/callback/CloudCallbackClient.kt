@@ -154,7 +154,7 @@ class CloudCallbackClient(
             headers.optString("content-type").takeIf(String::isNotBlank)?.let { connection.setRequestProperty("Content-Type", it) }
             if (body.isNotEmpty()) {
                 connection.doOutput = true
-                connection.fixedLengthStreamingMode = body.size
+                connection.setFixedLengthStreamingMode(body.size)
                 connection.outputStream.use { it.write(body) }
             }
             val status = connection.responseCode

@@ -57,3 +57,13 @@ studio.example.com {
 In Android Agent, open **Cloud Callback**, enter `https://studio.example.com`, enable the connection, then enter the displayed 10-character code through **Thiết bị → Thêm máy Cloud** in Studio. The phone initiates the connection, so it works through NAT/4G without an inbound phone port.
 
 The initial callback gateway supports one Studio API replica. Do not horizontally scale the `studio` service until a shared socket gateway is introduced.
+
+## Cloudflare Tunnel beside local USB mode
+
+On a Windows Studio host, keep the local static UI and USB bridge running on ports `4173` and `4174`, then start a separate full API instance for Cloud Callback on loopback port `4175`:
+
+```powershell
+docker compose --env-file .\studio\.runtime\studio.env -f .\studio\compose.yml -f .\studio\compose.tunnel.yml up -d --build studio-cloud
+```
+
+Point the Cloudflare Tunnel hostname at `http://localhost:4175`. This instance disables ADB and uses Secure session cookies, while sharing the existing PostgreSQL and Redis data. Cloudflare must proxy WebSocket upgrades for `/callback/v1/connect`, which Tunnel ingress does automatically.

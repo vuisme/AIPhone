@@ -105,6 +105,15 @@ test('secured bridge rejects requests without an authenticated cookie', async ()
   })
 })
 
+test('secured full Studio serves the login shell without a session cookie', async () => {
+  await withServer({ bridge: { listDevices: async () => [] }, services: securedServices() }, async (origin) => {
+    const response = await fetch(`${origin}/`)
+    assert.equal(response.status, 200)
+    assert.match(response.headers.get('content-type'), /^text\/html/)
+    assert.match(await response.text(), /id="app"/)
+  })
+})
+
 test('secured bridge hides unexpected backend details behind a request ID', async () => {
   const bridge = { listDevices: async () => [{ serial: 'phone', state: 'device' }] }
   const repository = { connectedDeviceStatus: async () => { throw new Error('password=database-secret') } }

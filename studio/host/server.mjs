@@ -380,7 +380,7 @@ export function createStudioServer({
       const studioWorkflow = STUDIO_WORKFLOW_PATH.exec(url.pathname)
       const studioAsset = STUDIO_ASSET_PATH.exec(url.pathname)
       const store = services?.repository || projectStore
-      const storeArgs = services ? [authentication.user] : []
+      const storeArgs = services && localApi ? [authentication.user] : []
       if (request.method === 'GET' && url.pathname === '/studio/workflows') {
         return json(response, 200, { workflows: await store.listWorkflows(...storeArgs) }, responseHeaders)
       }

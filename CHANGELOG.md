@@ -26,6 +26,7 @@
 - Outbound WSS Cloud Callback transport with one-time device claims, encrypted reconnect identity and no ADB requirement.
 - Studio device pairing UI for adding callback phones and using the existing fleet deploy/run/log pipeline remotely.
 - VPS Compose override for the full account-aware Studio API behind an HTTPS/WebSocket reverse proxy.
+- Side-by-side Cloudflare Tunnel deployment that preserves the local USB Studio while exposing a Secure-cookie Cloud Callback origin.
 
 ### Changed
 
@@ -40,6 +41,7 @@
 
 - Capture the primary physical display explicitly on multi-display Xiaomi devices.
 - Log image-match bounds and tap coordinates, retry failed taps, and stop false `FOUND` results when the target image remains visible.
+- Serve the full Studio login shell without requiring an authenticated workflow request context.
 
 ## [0.1.5] - 2026-07-31
 

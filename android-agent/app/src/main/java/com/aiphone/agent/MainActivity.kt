@@ -10,150 +10,318 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.aiphone.agent.accessibility.AccessibilityController
+import com.aiphone.agent.callback.CallbackEndpoint
+import com.aiphone.agent.callback.CallbackState
+import com.aiphone.agent.callback.CloudCallbackClient
 import com.aiphone.agent.root.RootGateway
 import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.update.AppUpdater
 import com.aiphone.agent.update.InteractiveInstallResult
 import com.aiphone.agent.update.UpdateCheckResult
-import com.aiphone.agent.callback.CallbackEndpoint
-import com.aiphone.agent.callback.CallbackState
-import com.aiphone.agent.callback.CloudCallbackClient
+import org.json.JSONObject
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
+    private enum class AppTab { DASHBOARD, WORKFLOWS, SETTINGS }
+
     private lateinit var preferences: AgentPreferences
-    private lateinit var serviceValue: TextView
-    private lateinit var rootValue: TextView
-    private lateinit var accessibilityValue: TextView
-    private lateinit var serviceButton: Button
-    private lateinit var stableButton: Button
-    private lateinit var nightlyButton: Button
-    private lateinit var updateButton: Button
-    private lateinit var updateStatus: TextView
-    private lateinit var callbackUrlInput: EditText
-    private lateinit var callbackStatus: TextView
-    private lateinit var callbackCode: TextView
-    private lateinit var callbackButton: Button
+    private lateinit var store: AgentStore
+    private lateinit var rootView: LinearLayout
+    private lateinit var contentHost: FrameLayout
+    private val tabButtons = linkedMapOf<AppTab, Button>()
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private var secretRevealGeneration = 0
+
+    private var dashboardServiceValue: TextView? = null
+    private var dashboardConnectionValue: TextView? = null
+    private var dashboardRootValue: TextView? = null
+    private var dashboardAccessibilityValue: TextView? = null
+    private var dashboardWorkflowValue: TextView? = null
+    private var workflowList: LinearLayout? = null
+    private var workflowCountValue: TextView? = null
+    private var settingsServiceValue: TextView? = null
+    private var settingsRootValue: TextView? = null
+    private var settingsAccessibilityValue: TextView? = null
+    private var serviceButton: Button? = null
+    private var callbackAccountValue: TextView? = null
+    private var callbackStatusValue: TextView? = null
+    private var callbackButton: Button? = null
+    private var callbackConfigToggle: Button? = null
+    private var callbackConfigContainer: LinearLayout? = null
+    private var callbackUrlInput: EditText? = null
+    private var callbackPairingCard: LinearLayout? = null
+    private var callbackCodeValue: TextView? = null
+    private var callbackCodeCopyButton: Button? = null
+    private var pairingTokenValue: TextView? = null
+    private var pairingTokenCopyButton: Button? = null
+    private var stableButton: Button? = null
+    private var nightlyButton: Button? = null
+    private var updateButton: Button? = null
+    private var updateStatus: TextView? = null
+
+    private val statusRefresh = object : Runnable {
+        override fun run() {
+            refreshStatus()
+            refreshHandler.postDelayed(this, 1_000)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         preferences = AgentPreferences(this)
-        window.statusBarColor = INK
-        window.navigationBarColor = INK
-        setContentView(buildContent())
+        store = AgentStore(this)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        rootView = buildAppShell()
+        ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
+            view.setPadding(0, systemBars.top, 0, maxOf(systemBars.bottom, keyboard.bottom))
+            insets
+        }
+        WindowCompat.getInsetsController(window, rootView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+        setContentView(rootView)
+        ViewCompat.requestApplyInsets(rootView)
+        showTab(AppTab.DASHBOARD)
         requestNotificationPermission()
         if (preferences.serviceEnabled) startAgentService()
     }
 
     override fun onResume() {
         super.onResume()
+        refreshHandler.removeCallbacks(statusRefresh)
+        refreshStatus()
+        refreshHandler.postDelayed(statusRefresh, 1_000)
+    }
+
+    override fun onPause() {
+        refreshHandler.removeCallbacks(statusRefresh)
+        hideSecrets()
+        super.onPause()
+    }
+
+    private fun buildAppShell(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(INK, Color.rgb(13, 27, 23), Color.rgb(8, 14, 13)))
+        addView(buildHeader())
+        addView(buildTabBar())
+        contentHost = FrameLayout(context).apply { id = View.generateViewId() }
+        addView(contentHost, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+
+    private fun buildHeader(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(18), dp(12), dp(18), dp(10))
+        addView(TextView(context).apply {
+            text = "AI"
+            gravity = Gravity.CENTER
+            textSize = 16f
+            setTextColor(INK)
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            background = rounded(ACID, 13f, Color.TRANSPARENT)
+        }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, 0, 0)
+            addView(label("AI PHONE", ACID, 10f, true).apply { letterSpacing = .18f })
+            addView(label("Device Agent", Color.WHITE, 21f, true).apply { typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD) })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(label("vc${BuildConfig.VERSION_CODE}", MUTED, 10f, true).apply {
+            setPadding(dp(9), dp(6), dp(9), dp(6))
+            background = rounded(PANEL_LIGHT, 10f, Color.rgb(51, 70, 64))
+        })
+    }
+
+    private fun buildTabBar(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setPadding(dp(14), dp(4), dp(14), dp(10))
+        addTabButton("Dashboard", AppTab.DASHBOARD)
+        addTabButton("Workflows", AppTab.WORKFLOWS)
+        addTabButton("Cài đặt", AppTab.SETTINGS)
+    }
+
+    private fun LinearLayout.addTabButton(title: String, tab: AppTab) {
+        val button = Button(context).apply {
+            text = title
+            isAllCaps = false
+            textSize = 11f
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            stateListAnimator = null
+            setPadding(dp(5), 0, dp(5), 0)
+            setOnClickListener { showTab(tab) }
+        }
+        tabButtons[tab] = button
+        addView(button, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+            marginStart = dp(3)
+            marginEnd = dp(3)
+        })
+    }
+
+    private fun showTab(tab: AppTab) {
+        hideSecrets()
+        clearPageReferences()
+        tabButtons.forEach { (candidate, button) ->
+            val active = candidate == tab
+            button.setTextColor(if (active) INK else MUTED)
+            button.background = rounded(if (active) ACID else PANEL, 12f, if (active) Color.TRANSPARENT else Color.rgb(42, 58, 53))
+        }
+        val page = when (tab) {
+            AppTab.DASHBOARD -> buildDashboardPage()
+            AppTab.WORKFLOWS -> buildWorkflowsPage()
+            AppTab.SETTINGS -> buildSettingsPage()
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(page, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        contentHost.removeAllViews()
+        contentHost.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         refreshStatus()
     }
 
-    private fun buildContent(): View {
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(30), dp(20), dp(34))
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(INK, Color.rgb(13, 27, 23), Color.rgb(8, 14, 13)))
-        }
-
-        content.addView(label("AIPHONE / DEVICE AGENT", ACID, 11f, true).apply { letterSpacing = .18f })
-        content.addView(label("Automation that stays\non the phone.", Color.WHITE, 34f, true).apply {
-            setPadding(0, dp(8), 0, dp(8))
-            typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
+    private fun buildDashboardPage(): View = scrollPage().apply {
+        addView(pageHeading("DASHBOARD", "Trạng thái tổng hợp", "Agent, kết nối Studio và khả năng thao tác trên máy."))
+        addView(card().apply {
+            addView(sectionHeader("AI PHONE AGENT", Build.MODEL))
+            dashboardServiceValue = statusValue("Đang kiểm tra...")
+            addView(dashboardServiceValue)
+            addView(divider())
+            dashboardConnectionValue = statusRow("KẾT NỐI STUDIO")
+            addView(dashboardConnectionValue)
+            dashboardWorkflowValue = statusRow("WORKFLOWS ĐÃ ĐỒNG BỘ")
+            addView(dashboardWorkflowValue)
         })
-        content.addView(label("${Build.MODEL}  •  Android ${Build.VERSION.RELEASE}  •  ${BuildConfig.VERSION_NAME}", MUTED, 12f, false).apply {
-            setPadding(0, 0, 0, dp(22))
+        addView(sectionTitle("DEVICE READINESS"))
+        addView(card().apply {
+            dashboardRootValue = statusRow("ROOT / KERNELSU")
+            addView(dashboardRootValue)
+            addView(divider())
+            dashboardAccessibilityValue = statusRow("UI INSPECTOR")
+            addView(dashboardAccessibilityValue)
         })
+        addView(card().apply {
+            addView(label("AUTOMATION STAYS ON PHONE", ACID, 10f, true).apply { letterSpacing = .14f })
+            addView(label("Workflow và Asset đã đồng bộ được chạy trực tiếp trên thiết bị. Studio chỉ gửi lệnh bắt đầu và nhận kết quả.", Color.WHITE, 13f, false).apply {
+                setPadding(0, dp(10), 0, 0)
+                setLineSpacing(dp(4).toFloat(), 1f)
+            })
+        })
+    }
 
-        content.addView(card().apply {
-            addView(sectionHeader("AGENT SERVICE", "Loopback API · port 8765"))
-            serviceValue = statusValue("Đang kiểm tra...")
-            addView(serviceValue)
-            serviceButton = actionButton("Tắt Agent service", primary = true) { toggleService() }
+    private fun buildWorkflowsPage(): View = scrollPage().apply {
+        addView(pageHeading("WORKFLOWS", "Kịch bản trên thiết bị", "Danh sách phiên bản đã được Studio đồng bộ xuống máy."))
+        workflowCountValue = label("Đang đọc kho workflow...", MUTED, 11f, false).apply { setPadding(dp(2), 0, 0, dp(10)) }
+        addView(workflowCountValue)
+        workflowList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        addView(workflowList)
+        addView(actionButton("Làm mới danh sách", primary = false) { refreshWorkflowList() })
+        refreshWorkflowList()
+    }
+
+    private fun buildSettingsPage(): View = scrollPage().apply {
+        addView(pageHeading("SETTINGS", "Cài đặt thông minh", "Thông tin nhạy cảm được ẩn và chỉ hiện tạm thời khi bạn yêu cầu."))
+
+        addView(card().apply {
+            addView(sectionHeader("AGENT SERVICE", "Chạy nền trên thiết bị"))
+            settingsServiceValue = statusValue("Đang kiểm tra...")
+            addView(settingsServiceValue)
+            serviceButton = actionButton("Bật Agent service", primary = true, action = ::toggleService)
             addView(serviceButton)
         })
 
-        val callbackIdentity = preferences.callbackIdentity()
-        content.addView(sectionTitle("CLOUD CALLBACK"))
-        content.addView(card().apply {
-            addView(sectionHeader("KẾT NỐI KHÔNG CẦN ADB", "WSS outbound"))
-            addView(label("Android chủ động kết nối tới Studio/VPS qua HTTPS. Không cần mở port trên điện thoại.", MUTED, 11f, false).apply { setPadding(0, dp(8), 0, dp(8)) })
-            callbackUrlInput = EditText(context).apply {
-                hint = "https://studio.example.com"
-                setText(preferences.callbackUrl)
-                setTextColor(Color.WHITE)
-                setHintTextColor(MUTED)
-                textSize = 13f
-                isSingleLine = true
-                setPadding(dp(13), 0, dp(13), 0)
-                background = rounded(PANEL_LIGHT, 12f, Color.rgb(48, 65, 59))
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) }
+        addView(sectionTitle("STUDIO CONNECTION"))
+        addView(card().apply {
+            addView(label("TÀI KHOẢN ĐÃ LIÊN KẾT", MUTED, 9f, true).apply { letterSpacing = .13f })
+            callbackAccountValue = label("Chưa liên kết", Color.WHITE, 18f, true).apply { setPadding(0, dp(8), 0, 0) }
+            addView(callbackAccountValue)
+            callbackStatusValue = label("Đang kiểm tra kết nối...", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) }
+            addView(callbackStatusValue)
+            callbackConfigContainer = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+                setPadding(0, dp(12), 0, 0)
+                addView(label("ĐỊA CHỈ STUDIO", MUTED, 9f, true).apply { letterSpacing = .12f })
+                callbackUrlInput = EditText(context).apply {
+                    hint = "https://studio.example.com"
+                    setText(preferences.callbackUrl)
+                    setTextColor(Color.WHITE)
+                    setHintTextColor(MUTED)
+                    textSize = 13f
+                    isSingleLine = true
+                    setPadding(dp(13), 0, dp(13), 0)
+                    background = rounded(PANEL_LIGHT, 12f, Color.rgb(48, 65, 59))
+                }
+                addView(callbackUrlInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) })
             }
-            addView(callbackUrlInput)
-            addView(label("MÃ PAIRING MỘT LẦN", MUTED, 10f, true).apply { setPadding(0, dp(16), 0, 0); letterSpacing = .12f })
-            callbackCode = label(callbackIdentity.pairingCode.chunked(5).joinToString("  "), SKY, 21f, true).apply {
-                setPadding(0, dp(8), 0, 0)
-                typeface = Typeface.MONOSPACE
-                setTextIsSelectable(true)
-            }
-            addView(callbackCode)
-            callbackStatus = label("Đang kiểm tra callback...", MUTED, 11f, false).apply { setPadding(0, dp(8), 0, 0) }
-            addView(callbackStatus)
-            callbackButton = actionButton("Bật Cloud Callback", primary = true, action = ::toggleCallback)
+            addView(callbackConfigContainer)
+            callbackConfigToggle = actionButton(if (preferences.callbackUrl.isBlank()) "Thiết lập kết nối Studio" else "Cấu hình lại Studio", primary = false, action = ::toggleCallbackConfiguration)
+            addView(callbackConfigToggle)
+            callbackButton = actionButton("Kết nối Studio", primary = true, action = ::toggleCallback)
             addView(callbackButton)
-            addView(actionButton("Tạo mã pairing mới", primary = false, action = ::rotateCallbackCode))
-            addView(actionButton("Sao chép mã callback", primary = false) {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("AIPhone callback pairing code", preferences.callbackIdentity().pairingCode))
-            })
         })
 
-        content.addView(sectionTitle("CAPABILITIES"))
-        content.addView(card().apply {
-            addView(statusLine("ROOT / KERNELSU").also { rootValue = it })
+        callbackPairingCard = card().apply {
+            visibility = View.GONE
+            addView(label("MÃ PAIRING MỘT LẦN", MUTED, 9f, true).apply { letterSpacing = .13f })
+            addView(label("Chỉ dùng mã này khi thêm thiết bị vào một tài khoản Studio mới.", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) })
+            callbackCodeValue = secretValue()
+            addView(callbackCodeValue)
+            addView(actionButton("Lấy mã pairing", primary = false, action = ::revealCallbackCode))
+            callbackCodeCopyButton = actionButton("Sao chép mã", primary = false, action = ::copyCallbackCode).apply { visibility = View.GONE }
+            addView(callbackCodeCopyButton)
+        }
+        addView(callbackPairingCard)
+
+        addView(card().apply {
+            addView(label("USB / LOCAL TOKEN", MUTED, 9f, true).apply { letterSpacing = .13f })
+            addView(label("Token chỉ cần khi pairing trực tiếp qua USB. Studio đã lưu token sẽ tự dùng lại khi máy online.", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) })
+            pairingTokenValue = secretValue()
+            addView(pairingTokenValue)
+            addView(actionButton("Lấy token", primary = false, action = ::revealPairingToken))
+            pairingTokenCopyButton = actionButton("Sao chép token", primary = false, action = ::copyPairingToken).apply { visibility = View.GONE }
+            addView(pairingTokenCopyButton)
+        })
+
+        addView(sectionTitle("DEVICE PERMISSIONS"))
+        addView(card().apply {
+            settingsRootValue = statusRow("ROOT / KERNELSU")
+            addView(settingsRootValue)
             addView(divider())
-            addView(statusLine("UI INSPECTOR / ACCESSIBILITY").also { accessibilityValue = it })
-            addView(actionButton("Mở cài đặt Trợ năng", primary = false) {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            })
-            addView(actionButton("Kiểm tra lại quyền root", primary = false) { checkRoot() })
+            settingsAccessibilityValue = statusRow("UI INSPECTOR / ACCESSIBILITY")
+            addView(settingsAccessibilityValue)
+            addView(actionButton("Mở cài đặt Trợ năng", primary = false) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) })
+            addView(actionButton("Kiểm tra lại quyền root", primary = false, action = ::checkRoot))
         })
 
-        val pairingToken = AgentStore(this).accessToken()
-        content.addView(sectionTitle("PAIRING"))
-        content.addView(card().apply {
-            addView(label("TOKEN CỦA THIẾT BỊ", MUTED, 10f, true).apply { letterSpacing = .12f })
-            addView(label(pairingToken.chunked(4).joinToString("  "), SKY, 17f, true).apply {
-                setPadding(0, dp(12), 0, dp(4))
-                typeface = Typeface.MONOSPACE
-                setTextIsSelectable(true)
-            })
-            addView(label("Token chỉ dùng cho thiết bị này và không được đưa vào workflow.", MUTED, 11f, false))
-            addView(actionButton("Sao chép pairing token", primary = false) {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("AIPhone pairing token", pairingToken))
-            })
-        })
-
-        content.addView(sectionTitle("RELEASE CHANNEL"))
-        content.addView(card().apply {
-            addView(label("Stable dành cho vận hành. Nightly nhận bản mới nhất để test trước.", MUTED, 12f, false))
+        addView(sectionTitle("APP UPDATE"))
+        addView(card().apply {
+            addView(label("Stable dành cho vận hành. Nightly nhận bản mới nhất để kiểm tra trước.", MUTED, 11f, false))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(0, dp(12), 0, 0)
@@ -167,76 +335,174 @@ class MainActivity : Activity() {
             updateButton = actionButton("Kiểm tra bản cập nhật", primary = true, action = ::checkForUpdate)
             addView(updateButton)
         })
-
-        content.addView(actionButton("Mở Studio trên điện thoại", primary = true) {
-            if (!AutomationService.isRunning) startAgentService()
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://127.0.0.1:8765")))
-        }.apply { setPadding(dp(16), 0, dp(16), 0) })
-
-        return ScrollView(this).apply {
-            isFillViewport = true
-            addView(content, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
     }
 
     private fun refreshStatus() {
         val running = AutomationService.isRunning
-        serviceValue.text = if (running) "ONLINE · API sẵn sàng" else "OFFLINE · workflow không nhận lệnh"
-        serviceValue.setTextColor(if (running) ACID else DANGER)
-        serviceButton.text = if (running) "Tắt Agent service" else "Bật Agent service"
-        serviceButton.background = buttonBackground(if (running) DANGER else ACID, if (running) Color.WHITE else INK)
-
-        val rooted = RootGateway.isRootGranted()
-        rootValue.text = if (rooted) "ĐÃ CẤP · image + XSpace + silent update" else "KHÔNG ROOT · chế độ Accessibility giới hạn"
-        rootValue.setTextColor(if (rooted) ACID else AMBER)
-        val accessibilityEnabled = AccessibilityController.isEnabled(this)
-        accessibilityValue.text = when {
-            AccessibilityController.isReady() -> "READY · text/tap/swipe khả dụng"
-            accessibilityEnabled -> "ĐÃ BẬT · đang chờ service kết nối"
-            else -> "CHƯA BẬT · cần mở Trợ năng"
+        val serviceText = if (running) "ONLINE · Agent sẵn sàng" else "OFFLINE · Agent đang dừng"
+        dashboardServiceValue?.apply { text = serviceText; setTextColor(if (running) ACID else DANGER) }
+        settingsServiceValue?.apply { text = serviceText; setTextColor(if (running) ACID else DANGER) }
+        serviceButton?.apply {
+            text = if (running) "Tắt Agent service" else "Bật Agent service"
+            setTextColor(if (running) Color.WHITE else INK)
+            background = buttonBackground(if (running) DANGER else ACID)
         }
-        accessibilityValue.setTextColor(if (accessibilityEnabled) SKY else AMBER)
+
         val callback = CloudCallbackClient.status
-        callbackStatus.text = callback.message + (callback.serial?.let { "\n$it" } ?: "")
-        callbackStatus.setTextColor(when (callback.state) {
+        val accountName = callback.accountName?.takeIf(String::isNotBlank) ?: preferences.callbackAccountName.takeIf(String::isNotBlank)
+        val connectionText = when (callback.state) {
+            CallbackState.ONLINE -> "ONLINE · Studio đã kết nối"
+            CallbackState.CONNECTING -> "CONNECTING · Đang kết nối Studio"
+            CallbackState.WAITING_PAIRING -> "WAITING · Chờ xác thực trên Studio"
+            CallbackState.ERROR -> "OFFLINE · Đang tự kết nối lại"
+            CallbackState.DISABLED -> "OFFLINE · Cloud Callback đang tắt"
+        }
+        val connectionColor = when (callback.state) {
             CallbackState.ONLINE -> ACID
             CallbackState.CONNECTING -> SKY
             CallbackState.WAITING_PAIRING -> AMBER
             CallbackState.ERROR -> DANGER
             CallbackState.DISABLED -> MUTED
-        })
-        callbackButton.text = if (preferences.callbackEnabled) "Tắt Cloud Callback" else "Lưu URL & kết nối"
-        callbackButton.background = buttonBackground(if (preferences.callbackEnabled) DANGER else ACID, if (preferences.callbackEnabled) Color.WHITE else INK)
-        callbackUrlInput.isEnabled = !preferences.callbackEnabled
-        callbackCode.text = preferences.callbackIdentity().pairingCode.chunked(5).joinToString("  ")
+        }
+        dashboardConnectionValue?.apply { text = "KẾT NỐI STUDIO\n$connectionText"; setTextColor(connectionColor) }
+        callbackAccountValue?.apply {
+            text = accountName ?: "Chưa liên kết tài khoản"
+            setTextColor(if (accountName != null) Color.WHITE else MUTED)
+        }
+        callbackStatusValue?.apply { text = connectionText; setTextColor(connectionColor) }
+        callbackButton?.apply {
+            text = if (preferences.callbackEnabled) "Ngắt kết nối Studio" else if (preferences.callbackUrl.isBlank()) "Kết nối Studio" else "Kết nối lại Studio"
+            setTextColor(if (preferences.callbackEnabled) Color.WHITE else INK)
+            background = buttonBackground(if (preferences.callbackEnabled) DANGER else ACID)
+        }
+        callbackConfigToggle?.visibility = if (preferences.callbackEnabled) View.GONE else View.VISIBLE
+        if (preferences.callbackEnabled) callbackConfigContainer?.visibility = View.GONE
+        callbackPairingCard?.visibility = if (callback.state == CallbackState.WAITING_PAIRING) View.VISIBLE else View.GONE
+
+        val rooted = RootGateway.isRootGranted()
+        val rootText = if (rooted) "ĐÃ CẤP · image + XSpace + silent update" else "KHÔNG ROOT · chế độ Accessibility giới hạn"
+        dashboardRootValue?.apply { text = "ROOT / KERNELSU\n$rootText"; setTextColor(if (rooted) ACID else AMBER) }
+        settingsRootValue?.apply { text = "ROOT / KERNELSU\n$rootText"; setTextColor(if (rooted) ACID else AMBER) }
+        val accessibilityEnabled = AccessibilityController.isEnabled(this)
+        val accessibilityText = when {
+            AccessibilityController.isReady() -> "READY · text/tap/swipe khả dụng"
+            accessibilityEnabled -> "ĐÃ BẬT · đang chờ service kết nối"
+            else -> "CHƯA BẬT · cần mở Trợ năng"
+        }
+        dashboardAccessibilityValue?.apply { text = "UI INSPECTOR\n$accessibilityText"; setTextColor(if (accessibilityEnabled) SKY else AMBER) }
+        settingsAccessibilityValue?.apply { text = "UI INSPECTOR / ACCESSIBILITY\n$accessibilityText"; setTextColor(if (accessibilityEnabled) SKY else AMBER) }
+
+        val workflowSummary = workflowSummary()
+        dashboardWorkflowValue?.apply { text = "WORKFLOWS ĐÃ ĐỒNG BỘ\n${workflowSummary.first} workflow · revision mới nhất r${workflowSummary.second}"; setTextColor(SKY) }
         refreshChannelButtons()
+    }
+
+    private fun refreshWorkflowList() {
+        val list = workflowList ?: return
+        val workflows = JSONObject(store.listWorkflows()).getJSONArray("workflows")
+        workflowCountValue?.text = "${workflows.length()} workflow đang lưu cục bộ trên thiết bị"
+        list.removeAllViews()
+        if (workflows.length() == 0) {
+            list.addView(card().apply { addView(label("Chưa có workflow được đồng bộ.", MUTED, 12f, false)) })
+            return
+        }
+        for (index in 0 until workflows.length()) {
+            val workflow = workflows.getJSONObject(index)
+            list.addView(card().apply {
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(label(workflow.optString("name", workflow.getString("id")), Color.WHITE, 16f, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(label("SYNCED", ACID, 9f, true).apply {
+                        letterSpacing = .12f
+                        setPadding(dp(8), dp(5), dp(8), dp(5))
+                        background = rounded(Color.rgb(31, 54, 42), 9f, Color.rgb(75, 102, 72))
+                    })
+                })
+                addView(label("r${workflow.optInt("revision", 1)} · ${workflow.optInt("nodeCount")} nodes · ${workflow.optInt("assetCount")} Assets", MUTED, 11f, false).apply { setPadding(0, dp(9), 0, 0) })
+                addView(label(workflow.getString("id"), Color.rgb(91, 111, 104), 9f, false).apply { setPadding(0, dp(5), 0, 0); typeface = Typeface.MONOSPACE })
+            })
+        }
+    }
+
+    private fun workflowSummary(): Pair<Int, Int> {
+        val workflows = JSONObject(store.listWorkflows()).getJSONArray("workflows")
+        var latestRevision = 0
+        for (index in 0 until workflows.length()) latestRevision = maxOf(latestRevision, workflows.getJSONObject(index).optInt("revision", 1))
+        return workflows.length() to latestRevision
+    }
+
+    private fun toggleCallbackConfiguration() {
+        val container = callbackConfigContainer ?: return
+        container.visibility = if (container.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        if (container.visibility == View.VISIBLE) callbackUrlInput?.requestFocus()
     }
 
     private fun toggleCallback() {
         if (preferences.callbackEnabled) {
             preferences.callbackEnabled = false
-        } else {
-            val url = callbackUrlInput.text.toString().trim()
-            val error = runCatching { CallbackEndpoint.websocketUrl(url) }.exceptionOrNull()
-            if (error != null) {
-                callbackStatus.text = error.message ?: "Callback URL không hợp lệ"
-                callbackStatus.setTextColor(DANGER)
-                return
-            }
-            preferences.callbackUrl = url
-            preferences.callbackEnabled = true
-            if (!AutomationService.isRunning) startAgentService()
+            restartCallback()
+            callbackButton?.postDelayed(::refreshStatus, 350)
+            return
         }
+        val configured = callbackUrlInput?.text?.toString()?.trim().orEmpty().ifBlank { preferences.callbackUrl }
+        val error = runCatching { CallbackEndpoint.websocketUrl(configured) }.exceptionOrNull()
+        if (error != null) {
+            callbackConfigContainer?.visibility = View.VISIBLE
+            callbackStatusValue?.apply { text = error.message ?: "Địa chỉ Studio không hợp lệ"; setTextColor(DANGER) }
+            return
+        }
+        preferences.callbackUrl = configured
+        preferences.callbackEnabled = true
+        if (!AutomationService.isRunning) startAgentService()
         restartCallback()
-        callbackButton.postDelayed(::refreshStatus, 350)
+        callbackConfigContainer?.visibility = View.GONE
+        callbackButton?.postDelayed(::refreshStatus, 350)
     }
 
-    private fun rotateCallbackCode() {
-        val identity = preferences.rotateCallbackPairingCode()
-        callbackCode.text = identity.pairingCode.chunked(5).joinToString("  ")
-        if (preferences.callbackEnabled) restartCallback()
-        callbackStatus.text = "Đã tạo mã mới; mã cũ hết hiệu lực khi Agent kết nối lại."
-        callbackStatus.setTextColor(SKY)
+    private fun revealCallbackCode() {
+        val value = preferences.callbackIdentity().pairingCode.chunked(5).joinToString("  ")
+        revealSecret(callbackCodeValue, callbackCodeCopyButton, value)
+    }
+
+    private fun revealPairingToken() {
+        val value = store.accessToken().chunked(4).joinToString("  ")
+        revealSecret(pairingTokenValue, pairingTokenCopyButton, value)
+    }
+
+    private fun revealSecret(valueView: TextView?, copyButton: Button?, value: String) {
+        val generation = ++secretRevealGeneration
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        valueView?.apply { text = value; setTextColor(SKY); setTextIsSelectable(true) }
+        copyButton?.visibility = View.VISIBLE
+        refreshHandler.postDelayed({ if (generation == secretRevealGeneration) hideSecrets() }, 20_000)
+    }
+
+    private fun copyCallbackCode() {
+        copySecret("AIPhone callback pairing code", preferences.callbackIdentity().pairingCode)
+    }
+
+    private fun copyPairingToken() {
+        copySecret("AIPhone pairing token", store.accessToken())
+    }
+
+    private fun copySecret(label: String, value: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
+        refreshHandler.postDelayed({
+            val current = if (clipboard.hasPrimaryClip()) clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString() else null
+            if (current == value) clipboard.setPrimaryClip(ClipData.newPlainText("AIPhone", ""))
+        }, 60_000)
+        hideSecrets()
+    }
+
+    private fun hideSecrets() {
+        secretRevealGeneration++
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        callbackCodeValue?.apply { text = HIDDEN_SECRET; setTextColor(MUTED); setTextIsSelectable(false) }
+        callbackCodeCopyButton?.visibility = View.GONE
+        pairingTokenValue?.apply { text = HIDDEN_SECRET; setTextColor(MUTED); setTextIsSelectable(false) }
+        pairingTokenCopyButton?.visibility = View.GONE
     }
 
     private fun restartCallback() {
@@ -251,7 +517,7 @@ class MainActivity : Activity() {
             preferences.serviceEnabled = true
             startAgentService()
         }
-        serviceButton.postDelayed(::refreshStatus, 250)
+        serviceButton?.postDelayed(::refreshStatus, 250)
     }
 
     private fun startAgentService() {
@@ -259,8 +525,7 @@ class MainActivity : Activity() {
     }
 
     private fun checkRoot() {
-        rootValue.text = "Đang yêu cầu KernelSU..."
-        rootValue.setTextColor(AMBER)
+        settingsRootValue?.apply { text = "ROOT / KERNELSU\nĐang yêu cầu KernelSU..."; setTextColor(AMBER) }
         thread {
             RootGateway.invalidateRootState()
             RootGateway.isRootGranted()
@@ -270,26 +535,23 @@ class MainActivity : Activity() {
 
     private fun setUpdateChannel(channel: UpdateChannel) {
         preferences.updateChannel = channel
-        updateStatus.text = "Đã chọn kênh ${channel.name.lowercase()}."
-        updateStatus.setTextColor(MUTED)
+        setUpdateStatus("Đã chọn kênh ${channel.name.lowercase()}.", MUTED)
         refreshChannelButtons()
     }
 
     private fun checkForUpdate() {
-        updateButton.isEnabled = false
+        updateButton?.isEnabled = false
         setUpdateStatus("Đang kết nối GitHub Releases...", SKY)
         val updater = AppUpdater(applicationContext)
         val channel = preferences.updateChannel
         thread(name = "AIPhone-Update-Check") {
-            val result = runCatching {
-                updater.check(channel, BuildConfig.VERSION_CODE.toLong()) { message -> postUi { setUpdateStatus(message, SKY) } }
-            }
+            val result = runCatching { updater.check(channel, BuildConfig.VERSION_CODE.toLong()) { message -> postUi { setUpdateStatus(message, SKY) } } }
             postUi {
                 result.fold(
                     onSuccess = { handleUpdateResult(updater, it) },
                     onFailure = {
                         setUpdateStatus("Không thể cập nhật: ${it.message ?: it.javaClass.simpleName}", DANGER)
-                        updateButton.isEnabled = true
+                        updateButton?.isEnabled = true
                     },
                 )
             }
@@ -300,7 +562,7 @@ class MainActivity : Activity() {
         when (result) {
             is UpdateCheckResult.Current -> {
                 setUpdateStatus(result.message, ACID)
-                updateButton.isEnabled = true
+                updateButton?.isEnabled = true
             }
             is UpdateCheckResult.Ready -> {
                 setUpdateStatus("Đã xác minh ${result.candidate.displayName} · vc${result.candidate.versionCode}. Đang mở trình cài đặt...", ACID)
@@ -312,7 +574,7 @@ class MainActivity : Activity() {
                                 onSuccess = { setUpdateStatus("Cài đặt thành công. Agent sẽ khởi động lại.", ACID) },
                                 onFailure = {
                                     setUpdateStatus("Cài đặt root thất bại: ${it.message ?: it.javaClass.simpleName}", DANGER)
-                                    updateButton.isEnabled = true
+                                    updateButton?.isEnabled = true
                                 },
                             )
                         }
@@ -320,17 +582,16 @@ class MainActivity : Activity() {
                 } else {
                     when (updater.launchInteractiveInstall(this, result.apkFile)) {
                         InteractiveInstallResult.Launched -> setUpdateStatus("Xác nhận cập nhật trong trình cài đặt Android.", AMBER)
-                        InteractiveInstallResult.PermissionRequired -> setUpdateStatus("Hãy bật quyền cài ứng dụng không rõ nguồn, rồi bấm kiểm tra lại.", AMBER)
+                        InteractiveInstallResult.PermissionRequired -> setUpdateStatus("Hãy bật quyền cài ứng dụng không rõ nguồn, rồi kiểm tra lại.", AMBER)
                     }
-                    updateButton.isEnabled = true
+                    updateButton?.isEnabled = true
                 }
             }
         }
     }
 
     private fun setUpdateStatus(message: String, color: Int) {
-        updateStatus.text = message
-        updateStatus.setTextColor(color)
+        updateStatus?.apply { text = message; setTextColor(color) }
     }
 
     private fun postUi(action: () -> Unit) {
@@ -339,13 +600,64 @@ class MainActivity : Activity() {
 
     private fun refreshChannelButtons() {
         val channel = preferences.updateChannel
-        stableButton.background = buttonBackground(if (channel == UpdateChannel.STABLE) ACID else PANEL_LIGHT, if (channel == UpdateChannel.STABLE) INK else Color.WHITE)
-        nightlyButton.background = buttonBackground(if (channel == UpdateChannel.NIGHTLY) SKY else PANEL_LIGHT, if (channel == UpdateChannel.NIGHTLY) INK else Color.WHITE)
+        stableButton?.apply {
+            setTextColor(if (channel == UpdateChannel.STABLE) INK else Color.WHITE)
+            background = buttonBackground(if (channel == UpdateChannel.STABLE) ACID else PANEL_LIGHT)
+        }
+        nightlyButton?.apply {
+            setTextColor(if (channel == UpdateChannel.NIGHTLY) INK else Color.WHITE)
+            background = buttonBackground(if (channel == UpdateChannel.NIGHTLY) SKY else PANEL_LIGHT)
+        }
+    }
+
+    private fun clearPageReferences() {
+        dashboardServiceValue = null
+        dashboardConnectionValue = null
+        dashboardRootValue = null
+        dashboardAccessibilityValue = null
+        dashboardWorkflowValue = null
+        workflowList = null
+        workflowCountValue = null
+        settingsServiceValue = null
+        settingsRootValue = null
+        settingsAccessibilityValue = null
+        serviceButton = null
+        callbackAccountValue = null
+        callbackStatusValue = null
+        callbackButton = null
+        callbackConfigToggle = null
+        callbackConfigContainer = null
+        callbackUrlInput = null
+        callbackPairingCard = null
+        callbackCodeValue = null
+        callbackCodeCopyButton = null
+        pairingTokenValue = null
+        pairingTokenCopyButton = null
+        stableButton = null
+        nightlyButton = null
+        updateButton = null
+        updateStatus = null
+    }
+
+    private fun scrollPage() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(18), dp(10), dp(18), dp(32))
+    }
+
+    private fun pageHeading(kicker: String, title: String, description: String) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(2), dp(4), dp(2), dp(18))
+        addView(label(kicker, ACID, 9f, true).apply { letterSpacing = .18f })
+        addView(label(title, Color.WHITE, 28f, true).apply {
+            setPadding(0, dp(7), 0, dp(6))
+            typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
+        })
+        addView(label(description, MUTED, 12f, false).apply { setLineSpacing(dp(3).toFloat(), 1f) })
     }
 
     private fun card() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(18), dp(18), dp(18), dp(18))
+        setPadding(dp(17), dp(17), dp(17), dp(17))
         background = rounded(PANEL, 18f, Color.rgb(48, 65, 59))
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) }
     }
@@ -353,25 +665,30 @@ class MainActivity : Activity() {
     private fun sectionHeader(title: String, subtitle: String) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        addView(label(title, Color.WHITE, 13f, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(label(subtitle, MUTED, 10f, false))
+        addView(label(title, Color.WHITE, 12f, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(label(subtitle, MUTED, 9f, false))
     }
 
-    private fun sectionTitle(title: String) = label(title, MUTED, 10f, true).apply {
+    private fun sectionTitle(title: String) = label(title, MUTED, 9f, true).apply {
         letterSpacing = .16f
-        setPadding(dp(2), dp(14), 0, dp(9))
+        setPadding(dp(2), dp(12), 0, dp(8))
     }
 
-    private fun statusValue(initial: String) = label(initial, ACID, 20f, true).apply { setPadding(0, dp(12), 0, dp(12)) }
+    private fun statusValue(initial: String) = label(initial, ACID, 19f, true).apply { setPadding(0, dp(12), 0, dp(4)) }
 
-    private fun statusLine(title: String) = label("$title\nĐang kiểm tra...", Color.WHITE, 12f, true).apply {
+    private fun statusRow(title: String) = label("$title\nĐang kiểm tra...", Color.WHITE, 11f, true).apply {
         setLineSpacing(dp(4).toFloat(), 1f)
-        setPadding(0, dp(4), 0, dp(4))
+        setPadding(0, dp(7), 0, dp(7))
+    }
+
+    private fun secretValue() = label(HIDDEN_SECRET, MUTED, 17f, true).apply {
+        setPadding(0, dp(12), 0, 0)
+        typeface = Typeface.MONOSPACE
     }
 
     private fun divider() = View(this).apply {
         setBackgroundColor(Color.rgb(49, 64, 59))
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1).apply { setMargins(0, dp(12), 0, dp(12)) }
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1).apply { setMargins(0, dp(10), 0, dp(10)) }
     }
 
     private fun label(value: String, color: Int, size: Float, bold: Boolean) = TextView(this).apply {
@@ -383,17 +700,17 @@ class MainActivity : Activity() {
 
     private fun actionButton(label: String, primary: Boolean, action: () -> Unit) = Button(this).apply {
         text = label
-        textSize = 13f
+        textSize = 12f
         isAllCaps = false
         setTextColor(if (primary) INK else Color.WHITE)
         typeface = Typeface.create("sans-serif", Typeface.BOLD)
-        background = buttonBackground(if (primary) ACID else PANEL_LIGHT, if (primary) INK else Color.WHITE)
+        background = buttonBackground(if (primary) ACID else PANEL_LIGHT)
         stateListAnimator = null
         setOnClickListener { action() }
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(12) }
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(47)).apply { topMargin = dp(11) }
     }
 
-    private fun buttonBackground(color: Int, @Suppress("UNUSED_PARAMETER") textColor: Int) = rounded(color, 13f, Color.TRANSPARENT)
+    private fun buttonBackground(color: Int) = rounded(color, 13f, Color.TRANSPARENT)
 
     private fun rounded(fill: Int, radius: Float, stroke: Int) = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
@@ -411,6 +728,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        private const val HIDDEN_SECRET = "••••  ••••  ••••  ••••"
         private val INK = Color.rgb(7, 13, 12)
         private val PANEL = Color.rgb(17, 29, 26)
         private val PANEL_LIGHT = Color.rgb(30, 45, 40)

@@ -1,5 +1,6 @@
 import { Braces, Plus, Trash2, Variable } from 'lucide-react'
 import type { WorkflowDocument, WorkflowParameter, WorkflowValueType } from '../../contracts/workflow'
+import { ttsRuntimeVariableReferences } from './runtimeVariableReferences'
 
 interface WorkflowVariablesManagerProps {
   workflow: WorkflowDocument
@@ -36,13 +37,13 @@ export function WorkflowVariablesManager({ workflow, onChange }: WorkflowVariabl
       value: node.config.value,
       disabled: node.disabled === true,
     }]
-    if (node.type === 'TTS_SPEAK' && String(node.config.outputVariable ?? '')) return [{
+    if (node.type === 'TTS_SPEAK' && String(node.config.outputVariable ?? '')) return ttsRuntimeVariableReferences(String(node.config.outputVariable)).map((reference) => ({
       nodeId: node.id,
-      name: String(node.config.outputVariable),
-      type: 'JSON',
-      value: 'Kết quả TTS: file, engine, voice, durationMs',
+      name: reference.name,
+      type: reference.type,
+      value: reference.description,
       disabled: node.disabled === true,
-    }]
+    }))
     return []
   })
 
@@ -70,7 +71,7 @@ export function WorkflowVariablesManager({ workflow, onChange }: WorkflowVariabl
       <section className="variable-section">
         <div className="variable-section__heading"><Braces size={18} /><div><h3>Biến được tạo khi chạy</h3><p>Danh sách chỉ để tra cứu. Giá trị xuất hiện sau node tạo output tương ứng đã chạy.</p></div><strong>{runtimeVariables.length}</strong></div>
         {runtimeVariables.length === 0 ? <div className="variable-empty">Chưa có node tạo biến runtime trong workflow.</div> : <div className="runtime-variable-list">
-          {runtimeVariables.map((variable) => <article key={variable.nodeId} className={variable.disabled ? 'disabled' : ''}><code>{`{{${variable.name}}}`}</code><span>{variable.type}</span><strong>{String(variable.value ?? '') || '—'}</strong><small>{variable.nodeId}{variable.disabled ? ' · đang skip' : ''}</small></article>)}
+          {runtimeVariables.map((variable) => <article key={`${variable.nodeId}:${variable.name}`} className={variable.disabled ? 'disabled' : ''}><code>{`{{${variable.name}}}`}</code><span>{variable.type}</span><strong>{String(variable.value ?? '') || '—'}</strong><small>{variable.nodeId}{variable.disabled ? ' · đang skip' : ''}</small></article>)}
         </div>}
       </section>
     </section>

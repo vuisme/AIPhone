@@ -165,6 +165,21 @@ export interface TtsCapabilities {
   engines: TtsEngineCapability[]
 }
 
+export interface AndroidAiServiceCapability {
+  type: 'SPEECH_RECOGNITION' | 'TEXT_CLASSIFIER' | string
+  label: string
+  packageName: string
+  serviceName: string
+}
+
+export interface AndroidRuntimeCapabilities {
+  tts: TtsCapabilities
+  aiServices: AndroidAiServiceCapability[]
+  warnings: string[]
+  modelDiscovery: 'ANDROID_PUBLIC_APIS' | string
+  discoveredAt: number
+}
+
 export interface RunStatus {
   id: string
   state: 'IDLE' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'STOPPED'
@@ -482,6 +497,19 @@ export const agentApi = {
 
   async getTtsCapabilities(serial = selectedSerial): Promise<TtsCapabilities> {
     return parseJson(await agentFetch('/api/capabilities/tts', {}, serial))
+  },
+
+  async getRuntimeCapabilities(serial = selectedSerial, forceRefresh = false): Promise<AndroidRuntimeCapabilities> {
+    const response = await agentFetch('/api/capabilities/runtime', { method: forceRefresh ? 'POST' : 'GET', cache: 'no-store' }, serial)
+    if (![404, 405].includes(response.status)) return parseJson(response)
+    const tts = await parseJson<TtsCapabilities>(await agentFetch('/api/capabilities/tts', { cache: 'no-store' }, serial))
+    return {
+      tts,
+      aiServices: [],
+      modelDiscovery: 'ANDROID_PUBLIC_APIS',
+      warnings: ['Agent hiện tại chỉ hỗ trợ quét TTS; hãy cập nhật APK để đọc thêm AI services.'],
+      discoveredAt: Date.now(),
+    }
   },
 
   async getAudioArtifact(artifactId: string, serial = selectedSerial): Promise<Blob> {

@@ -11,6 +11,7 @@ import com.aiphone.agent.root.SafeCommands
 import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.workflow.WorkflowExecutor
 import com.aiphone.agent.workflow.TtsGateway
+import com.aiphone.agent.workflow.RuntimeCapabilityGateway
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -45,6 +46,7 @@ class AgentHttpServer(
     private val store: AgentStore,
     private val executor: WorkflowExecutor,
     private val ttsGateway: TtsGateway,
+    private val runtimeCapabilityGateway: RuntimeCapabilityGateway,
 ) {
     private val running = AtomicBoolean(false)
     private val workers = Executors.newFixedThreadPool(4)
@@ -102,6 +104,8 @@ class AgentHttpServer(
             when {
                 request.method == "GET" && request.path == "/api/device" -> deviceHealth()
                 request.method == "GET" && request.path == "/api/capabilities/tts" -> HttpResponse.json(body = ttsGateway.capabilities().toJson())
+                request.method == "GET" && request.path == "/api/capabilities/runtime" -> HttpResponse.json(body = runtimeCapabilityGateway.capabilities().toJson())
+                request.method == "POST" && request.path == "/api/capabilities/runtime" -> HttpResponse.json(body = runtimeCapabilityGateway.capabilities(forceRefresh = true).toJson())
                 audioPath != null && request.method == "GET" -> {
                     val file = store.audioArtifactFile(audioPath.groupValues[1])
                     require(file.isFile) { "Audio artifact is missing or expired" }

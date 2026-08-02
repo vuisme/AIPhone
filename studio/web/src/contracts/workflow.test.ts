@@ -131,4 +131,16 @@ describe('workflow validation', () => {
 
     expect(validateWorkflow(workflow).issues).toContain('Node speak-result has invalid output variable audio result')
   })
+
+  it('accepts a nested runtime field as an IF variable reference', () => {
+    const workflow = createStarterWorkflow()
+    workflow.nodes.push({
+      id: 'check-audio-size',
+      type: 'IF',
+      position: { x: 300, y: 120 },
+      config: { leftVariable: 'ttsResult.file.sizeBytes', operator: 'GREATER_THAN', rightSource: 'LITERAL', rightType: 'NUMBER', rightValue: 0 },
+    })
+
+    expect(validateWorkflow(workflow).issues).not.toContain('Node check-audio-size has invalid left variable ttsResult.file.sizeBytes')
+  })
 })

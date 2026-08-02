@@ -24,12 +24,17 @@ describe('TTS inspector', () => {
           ],
         }],
       }}
+      onRefreshTtsCapabilities={vi.fn()}
       onChange={vi.fn()}
     />)
 
     expect(screen.getByLabelText('TTS engine')).toHaveTextContent('Speech Services by Google')
+    expect(screen.getByLabelText(/Voice \/ model ưu tiên/)).toHaveTextContent('On-device')
     expect(screen.getByLabelText(/Voice \/ model ưu tiên/)).toHaveTextContent('vi-vn-local')
     expect(screen.getByLabelText(/Voice \/ model ưu tiên/)).not.toHaveTextContent('en-us-local')
+    expect(screen.getByLabelText(/Ngôn ngữ/)).toHaveTextContent('vi-VN')
+    expect(screen.getByText('1 engine · 2 voice trên máy đang chọn')).toBeInTheDocument()
+    expect(screen.getByLabelText('Quét lại TTS model trên điện thoại')).toBeInTheDocument()
     expect(screen.getByLabelText(/Nội dung đọc/)).toBeInTheDocument()
   })
 })

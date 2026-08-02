@@ -12,6 +12,7 @@ import com.aiphone.agent.server.AgentHttpServer
 import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.workflow.WorkflowExecutor
 import com.aiphone.agent.workflow.AndroidTtsGateway
+import com.aiphone.agent.workflow.AndroidRuntimeCapabilityGateway
 import com.aiphone.agent.accessibility.AccessibilityController
 import com.aiphone.agent.root.CommandResult
 import com.aiphone.agent.callback.CallbackStatus
@@ -32,13 +33,14 @@ class AutomationService : Service() {
 
         val store = AgentStore(this)
         val ttsGateway = AndroidTtsGateway(this)
+        val runtimeCapabilityGateway = AndroidRuntimeCapabilityGateway(this, ttsGateway)
         val executor = WorkflowExecutor(
             store = store,
             ttsGateway = ttsGateway,
             ensureAccessibility = { AccessibilityController.ensureEnabled(this) },
             launchMainApp = ::launchMainPackage,
         )
-        server = AgentHttpServer(this, store, executor, ttsGateway).also { it.start() }
+        server = AgentHttpServer(this, store, executor, ttsGateway, runtimeCapabilityGateway).also { it.start() }
         callbackClient = startCallbackClient(store)
     }
 

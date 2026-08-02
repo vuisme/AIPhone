@@ -49,7 +49,7 @@ export type NodeField = NodeFieldBase & (
   | { kind: 'select'; options: Array<{ value: string | number; label: string }> }
   | { kind: 'asset'; assetType: 'IMAGE' | 'UI_SELECTOR' }
   | { kind: 'androidUser' }
-  | { kind: 'ttsEngine' | 'ttsVoice' }
+  | { kind: 'ttsLanguage' | 'ttsEngine' | 'ttsVoice' }
   | { kind: 'typedValue'; typeKey: string }
 )
 
@@ -93,14 +93,14 @@ export const NODE_CATALOG: NodeDefinition[] = [
   { type: 'LOG', label: 'Ghi log', description: 'Ghi giá trị để kiểm tra run', category: 'Dữ liệu', accent: '#f0c96a', icon: Terminal, defaultConfig: { message: 'Giá trị: {{value}}' }, fields: [{ key: 'message', label: 'Nội dung', hint: 'Có thể chèn biến bằng {{tenBien}}', kind: 'textarea', supportsVariables: true, variableInsertMode: 'append' }] },
   { type: 'TTS_SPEAK', label: 'TTS Speak', description: 'Tạo file giọng nói và phát âm thanh', category: 'Âm thanh', accent: '#58e0c2', icon: AudioLines, defaultConfig: { text: 'Xin chào từ AIPhone', engine: '', voice: '', languageTag: 'vi-VN', speechRate: 1, pitch: 1, playAudio: false, saveAudio: true, outputVariable: 'ttsResult' }, fields: [
     { key: 'text', label: 'Nội dung đọc', hint: 'Hỗ trợ text thường và {{tenBien}}', kind: 'textarea', supportsVariables: true, variableInsertMode: 'append' },
-    { key: 'languageTag', label: 'Ngôn ngữ', hint: 'BCP-47, ví dụ vi-VN hoặc en-US', kind: 'text' },
+    { key: 'languageTag', label: 'Ngôn ngữ', hint: 'Danh sách được quét trực tiếp từ điện thoại đang chọn', kind: 'ttsLanguage' },
     { key: 'engine', label: 'TTS engine', kind: 'ttsEngine' },
     { key: 'voice', label: 'Voice / model ưu tiên', hint: 'Nếu máy khác không có voice này, Agent tự chọn voice tương thích', kind: 'ttsVoice' },
     { key: 'speechRate', label: 'Tốc độ đọc', kind: 'range', min: 0.25, max: 4, step: 0.05, format: 'NUMBER' },
     { key: 'pitch', label: 'Cao độ', kind: 'range', min: 0.25, max: 2, step: 0.05, format: 'NUMBER' },
     { key: 'playAudio', label: 'Phát ngay trên điện thoại', kind: 'checkbox' },
     { key: 'saveAudio', label: 'Lưu file để nghe / tải từ kết quả', kind: 'checkbox' },
-    { key: 'outputVariable', label: 'Gán kết quả vào biến', hint: 'Biến JSON gồm file, engine, voice, ngôn ngữ và thời lượng', kind: 'text' },
+    { key: 'outputVariable', label: 'Gán kết quả vào biến', hint: 'Dùng nested path như {{ttsResult.file.path}} hoặc {{ttsResult.file.artifactId}} ở node sau', kind: 'text' },
   ] },
   { type: 'WAIT_IMAGE', label: 'Chờ Asset ảnh', description: 'Đợi ảnh mục tiêu xuất hiện', category: 'Hình ảnh', accent: '#73d7ff', icon: ScanSearch, defaultConfig: { assetId: '', threshold: 0.88, timeoutMs: 30000, pollIntervalMs: 500 }, fields: [imageAssetField, thresholdField, ...timeoutFields], outcomes: [{ id: 'FOUND', label: 'Thấy' }, { id: 'TIMEOUT', label: 'Hết giờ' }] },
   { type: 'IF_IMAGE', label: 'Nếu thấy Asset', description: 'Rẽ nhánh Có / Không', category: 'Hình ảnh', accent: '#73d7ff', icon: ScanSearch, defaultConfig: { assetId: '', threshold: 0.88 }, fields: [imageAssetField, thresholdField], outcomes: [{ id: 'FOUND', label: 'Có' }, { id: 'TIMEOUT', label: 'Không' }] },

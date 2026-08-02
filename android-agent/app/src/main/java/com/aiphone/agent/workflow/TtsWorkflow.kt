@@ -135,6 +135,7 @@ data class TtsSynthesisResult(
 
 interface TtsGateway {
     fun capabilities(): TtsCapabilities
+    fun refreshCapabilities(): TtsCapabilities = capabilities()
     fun synthesize(options: TtsSpeakOptions, outputFile: java.io.File, isCancelled: () -> Boolean = { false }): TtsSynthesisResult
 }
 

@@ -31,7 +31,7 @@ function formatValue(value: unknown): string {
   catch { return String(value) }
 }
 
-function RunAudioArtifact({ artifactId }: { artifactId: string }) {
+function RunAudioArtifact({ artifactId, filePath }: { artifactId: string; filePath?: string }) {
   const [url, setUrl] = useState<string>()
   const [error, setError] = useState<string>()
 
@@ -56,6 +56,7 @@ function RunAudioArtifact({ artifactId }: { artifactId: string }) {
   return <div className="run-audio-result">
     <header><AudioLines size={14} /><strong>TTS AUDIO</strong><code>{artifactId.slice(0, 8)}</code></header>
     {url ? <><audio controls preload="metadata" src={url} /><a href={url} download={`${artifactId}.wav`}><Download size={13} /> Tải WAV</a></> : <small>{error ?? 'Đang tải file âm thanh...'}</small>}
+    {filePath && <small className="run-audio-path">Android path · <code>{filePath}</code></small>}
   </div>
 }
 
@@ -63,6 +64,9 @@ export function RunLogPanel({ run, expanded, onToggle }: RunLogPanelProps) {
   const entries = displayEntries(run)
   const latest = entries.at(-1)
   const artifactId = typeof run.lastResult?.metadata?.artifactId === 'string' ? run.lastResult.metadata.artifactId : undefined
+  const resultValue = run.lastResult?.value?.value
+  const resultFile = resultValue && typeof resultValue === 'object' && 'file' in resultValue ? (resultValue as { file?: unknown }).file : undefined
+  const filePath = resultFile && typeof resultFile === 'object' && 'path' in resultFile && typeof (resultFile as { path?: unknown }).path === 'string' ? (resultFile as { path: string }).path : undefined
 
   return (
     <aside className={`run-log-panel ${expanded ? 'expanded' : ''}`}>
@@ -82,7 +86,7 @@ export function RunLogPanel({ run, expanded, onToggle }: RunLogPanelProps) {
                 <div key={name}><code>{name}</code><b>{runValue.type}</b><span>{formatValue(runValue.value)}</span></div>
               ))}
             </div>
-            {artifactId && <RunAudioArtifact artifactId={artifactId} />}
+            {artifactId && <RunAudioArtifact artifactId={artifactId} filePath={filePath} />}
           </section>
           <div className="run-log-panel__body" role="log" aria-live="polite">
             {entries.length === 0 ? (

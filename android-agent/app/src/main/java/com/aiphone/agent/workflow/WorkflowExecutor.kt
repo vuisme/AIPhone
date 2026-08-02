@@ -286,10 +286,17 @@ class WorkflowExecutor(
         return try {
             val synthesis = gateway.synthesize(options, outputFile, cancellation::get)
             val keepAudio = options.saveAudio
+            val fileReference = if (keepAudio) AgentFileReference.audioArtifact(
+                artifactId = artifactId,
+                fileName = outputFile.name,
+                absolutePath = outputFile.absolutePath,
+                sizeBytes = outputFile.length(),
+            ).toJson() else null
             val output = JSONObject()
                 .put("text", options.text)
                 .put("artifactId", if (keepAudio) artifactId else JSONObject.NULL)
                 .put("fileName", if (keepAudio) outputFile.name else JSONObject.NULL)
+                .put("file", fileReference ?: JSONObject.NULL)
                 .put("engine", synthesis.enginePackage)
                 .put("voice", synthesis.voiceName)
                 .put("languageTag", synthesis.languageTag)

@@ -55,7 +55,21 @@ class RunContext {
     }
 
     @Synchronized
-    fun require(name: String): RunValue = values[name] ?: error("Variable $name is not defined")
+    fun require(name: String): RunValue {
+        require(REFERENCE_PATTERN.matches(name)) { "Invalid variable reference $name" }
+        val segments = name.split('.')
+        val root = values[segments.first()] ?: error("Variable ${segments.first()} is not defined")
+        if (segments.size == 1) return root
+        var current: Any? = root.value
+        for (field in segments.drop(1)) {
+            current = when (current) {
+                is JSONObject -> if (current.has(field)) current.get(field) else error("Variable field $name is not defined")
+                is Map<*, *> -> if (current.containsKey(field)) current[field] else error("Variable field $name is not defined")
+                else -> error("Variable field $name is not defined")
+            }
+        }
+        return valueFromRuntime(current)
+    }
 
     @Synchronized
     fun snapshot(): Map<String, RunValue> = LinkedHashMap(values)
@@ -69,7 +83,16 @@ class RunContext {
 
     companion object {
         private val VARIABLE_PATTERN = Regex("^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
-        private val VARIABLE_TOKEN = Regex("\\{\\{\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\}\\}")
+        private val REFERENCE_PATTERN = Regex("^[a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*$")
+        private val VARIABLE_TOKEN = Regex("\\{\\{\\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*)\\s*\\}\\}")
+
+        private fun valueFromRuntime(value: Any?): RunValue = when (value) {
+            null, JSONObject.NULL -> RunValue(WorkflowValueType.JSON, JSONObject.NULL)
+            is Boolean -> RunValue(WorkflowValueType.BOOLEAN, value)
+            is Number -> RunValue(WorkflowValueType.NUMBER, value.toDouble())
+            is JSONObject, is JSONArray, is Map<*, *>, is Collection<*> -> RunValue(WorkflowValueType.JSON, value)
+            else -> RunValue(WorkflowValueType.STRING, value.toString())
+        }
 
         fun isValidVariableName(name: String): Boolean = VARIABLE_PATTERN.matches(name)
 

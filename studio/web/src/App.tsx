@@ -13,11 +13,11 @@ import {
   setAgentDeviceSerial,
   setAgentToken,
   type AdbDevice,
+  type AndroidRuntimeCapabilities,
   type AssetUpload,
   type DeviceHealth,
   type RunStatus,
   type StudioUser,
-  type TtsCapabilities,
 } from './api/client'
 import { createStarterWorkflow, normalizeWorkflow, validateWorkflow, type AssetRecord, type ImageAssetRecord, type UiSelectorAssetRecord, type WorkflowDocument, type WorkflowNode } from './contracts/workflow'
 import { AssetLibrary } from './features/assets/AssetLibrary'
@@ -84,7 +84,9 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(() => localStorage.getItem(LOCAL_SELECTED_KEY) || loadLocalWorkflows()[0]?.id || 'default-workflow')
   const [workspace, setWorkspace] = useState<'STUDIO' | 'WORKFLOWS' | 'VARIABLES' | 'ASSETS' | 'ADMIN'>('STUDIO')
   const [device, setDevice] = useState<DeviceHealth>()
-  const [ttsCapabilities, setTtsCapabilities] = useState<TtsCapabilities>()
+  const [runtimeCapabilities, setRuntimeCapabilities] = useState<AndroidRuntimeCapabilities>()
+  const [runtimeCapabilitiesLoading, setRuntimeCapabilitiesLoading] = useState(false)
+  const [runtimeCapabilitiesError, setRuntimeCapabilitiesError] = useState<string>()
   const [adbDevices, setAdbDevices] = useState<AdbDevice[]>([])
   const [selectedSerial, setSelectedSerial] = useState(getAgentDeviceSerial)
   const [targetSerials, setTargetSerials] = useState<string[]>(() => getAgentDeviceSerial() ? [getAgentDeviceSerial()] : [])
@@ -186,17 +188,30 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
     return () => { cancelled = true }
   }, [connectionRevision, hostIsEmpty, isPaired, selectedSerial, standalone])
 
+  const refreshRuntimeCapabilities = useCallback(async (forceRefresh = false) => {
+    if (!device || !isPaired) return
+    setRuntimeCapabilitiesLoading(true)
+    setRuntimeCapabilitiesError(undefined)
+    try {
+      const capabilities = await agentApi.getRuntimeCapabilities(selectedSerial, forceRefresh)
+      setRuntimeCapabilities(capabilities)
+      setRuntimeCapabilitiesError(capabilities.warnings[0])
+    } catch (reason) {
+      setRuntimeCapabilities(undefined)
+      setRuntimeCapabilitiesError(reason instanceof Error ? reason.message : 'Không thể quét Voice / AI runtime')
+    } finally {
+      setRuntimeCapabilitiesLoading(false)
+    }
+  }, [device, isPaired, selectedSerial])
+
   useEffect(() => {
     if (!device || !isPaired) {
-      setTtsCapabilities(undefined)
+      setRuntimeCapabilities(undefined)
+      setRuntimeCapabilitiesError(undefined)
       return
     }
-    let cancelled = false
-    agentApi.getTtsCapabilities(selectedSerial)
-      .then((capabilities) => { if (!cancelled) setTtsCapabilities(capabilities) })
-      .catch(() => { if (!cancelled) setTtsCapabilities(undefined) })
-    return () => { cancelled = true }
-  }, [device, isPaired, selectedSerial])
+    void refreshRuntimeCapabilities(false)
+  }, [device, isPaired, refreshRuntimeCapabilities])
 
   useEffect(() => {
     localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(workflows))
@@ -439,6 +454,8 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
 
   const statusLabel = run.state === 'RUNNING' ? (isNodeTest ? 'ĐANG TEST NODE' : `ĐANG CHẠY · VÒNG ${run.iteration}`) : run.state
   const selectedAdbDevice = adbDevices.find((candidate) => candidate.serial === selectedSerial)
+  const ttsCapabilities = runtimeCapabilities?.tts
+  const voiceCount = ttsCapabilities?.engines.reduce((total, engine) => total + engine.voices.length, 0) ?? 0
 
   return (
     <main className="app-shell">
@@ -449,12 +466,12 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
         <div className="top-actions">{standalone && <button className="toolbar-button" onClick={() => setShowLiveView(true)} disabled={!selectedSerial}><Monitor size={17} /> Live View</button>}<button className="toolbar-button" onClick={() => setCaptureTarget({ workflowId: workflow.id })} disabled={(standalone && !selectedSerial) || !isPaired}><Camera size={17} /> Capture Lab</button><button className="toolbar-button" onClick={() => void saveWorkflow()} disabled={isSaving}><Save size={17} /> Lưu</button>{run.state === 'RUNNING' ? <button className="run-button stop" onClick={() => void stopRun()}><CircleStop size={18} /> Dừng</button> : <button className="run-button" onClick={() => void startRun()} disabled={(standalone && !selectedSerial) || !isPaired}><Play size={18} fill="currentColor" /> Chạy</button>}{standalone && <><div className="account-chip"><span>{user.role}</span><strong>{user.displayName}</strong></div><button className="icon-button logout-button" onClick={() => void onLogout()} aria-label="Đăng xuất" title="Đăng xuất"><LogOut size={17} /></button></>}</div>
       </header>
 
-      <section className="status-rail"><div><Smartphone size={15} /><span>DISPLAY</span><strong>{device ? `${device.displayWidth} × ${device.displayHeight}` : '2608 × 1200'}</strong></div><div><Cpu size={15} /><span>ROOT / INSPECTOR</span><strong className={device?.rootGranted ? 'good' : 'warn'}>{device ? `${device.rootGranted ? 'KERNELSU' : 'NO ROOT'} · ${device.accessibilityReady ? 'TEXT READY' : 'TEXT AUTO'}` : 'CHƯA KIỂM TRA'}</strong></div><div><span>WORKFLOW</span><strong>{workflow.name} · r{workflow.revision}</strong></div><div><span>VALIDATION</span><strong className={validation.valid ? 'good' : 'bad'}>{validation.valid ? 'SẴN SÀNG' : `${validation.issues.length} LỖI`}</strong></div><div className="run-state"><span>RUN</span><strong data-state={run.state}>{statusLabel}</strong></div></section>
+      <section className="status-rail"><div><Smartphone size={15} /><span>DISPLAY</span><strong>{device ? `${device.displayWidth} × ${device.displayHeight}` : '2608 × 1200'}</strong></div><div><Cpu size={15} /><span>ROOT / INSPECTOR</span><strong className={device?.rootGranted ? 'good' : 'warn'}>{device ? `${device.rootGranted ? 'KERNELSU' : 'NO ROOT'} · ${device.accessibilityReady ? 'TEXT READY' : 'TEXT AUTO'}` : 'CHƯA KIỂM TRA'}</strong></div><div className="capability-status"><span>VOICE / AI</span><strong className={runtimeCapabilitiesError ? (ttsCapabilities?.available ? 'warn' : 'bad') : ttsCapabilities?.available ? 'good' : 'warn'}>{runtimeCapabilitiesLoading ? 'ĐANG QUÉT...' : ttsCapabilities ? `${ttsCapabilities.engines.length} ENGINE · ${voiceCount} MODEL · ${runtimeCapabilities?.aiServices.length ?? 0} SERVICE` : 'CHƯA QUÉT'}</strong><button onClick={() => void refreshRuntimeCapabilities(true)} disabled={!device || runtimeCapabilitiesLoading} aria-label="Quét lại Voice và AI services"><RefreshCw size={12} className={runtimeCapabilitiesLoading ? 'spin' : ''} /></button></div><div><span>WORKFLOW</span><strong>{workflow.name} · r{workflow.revision}</strong></div><div><span>VALIDATION</span><strong className={validation.valid ? 'good' : 'bad'}>{validation.valid ? 'SẴN SÀNG' : `${validation.issues.length} LỖI`}</strong></div><div className="run-state"><span>RUN</span><strong data-state={run.state}>{statusLabel}</strong></div></section>
       {standalone && <FleetDeployBar devices={adbDevices} targetSerials={targetSerials} progress={fleetProgress} busy={isFleetBusy} onChooseDevices={() => { setShowDevices(true); void scanDevices() }} onDeploy={() => void deployToFleet(false)} onDeployAndRun={() => void deployToFleet(true)} />}
       {notice && <button className="notice-bar" onClick={() => setNotice(undefined)}>{notice}<span>Đóng</span></button>}
       <RunLogPanel run={run} expanded={isLogExpanded} onToggle={() => setLogExpanded((value) => !value)} />
 
-      {workspace === 'STUDIO' && <WorkflowCanvas workflow={workflow} activeNodeId={run.currentNodeId} onChange={changeWorkflow} onPlayNode={(node) => void playNode(node)} isNodeTestRunning={!isPaired || (isNodeTest && run.state === 'RUNNING')} ttsCapabilities={ttsCapabilities} />}
+      {workspace === 'STUDIO' && <WorkflowCanvas workflow={workflow} activeNodeId={run.currentNodeId} onChange={changeWorkflow} onPlayNode={(node) => void playNode(node)} isNodeTestRunning={!isPaired || (isNodeTest && run.state === 'RUNNING')} ttsCapabilities={ttsCapabilities} ttsCapabilitiesLoading={runtimeCapabilitiesLoading} ttsCapabilitiesError={runtimeCapabilitiesError} onRefreshTtsCapabilities={() => void refreshRuntimeCapabilities(true)} />}
       {workspace === 'WORKFLOWS' && <WorkflowManager workflows={workflows} selectedId={workflow.id} onSelect={(id) => { setSelectedWorkflowId(id); setWorkspace('STUDIO') }} onCreate={(name) => void createWorkflow(name)} onRename={(id, name) => void renameWorkflow(id, name)} onDelete={(id) => void deleteWorkflow(id)} />}
       {workspace === 'VARIABLES' && <WorkflowVariablesManager workflow={workflow} onChange={changeWorkflow} />}
       {workspace === 'ASSETS' && <AssetLibrary workflows={workflows} selectedWorkflowId={workflow.id} onSelectWorkflow={setSelectedWorkflowId} onCapture={(workflowId) => setCaptureTarget({ workflowId })} onReplace={(asset) => setCaptureTarget({ workflowId: asset.workflowId, initialImageAsset: asset })} onRename={(asset, name) => void renameAsset(asset, name)} onDelete={(asset) => void deleteAsset(asset)} getAssetImage={standalone ? projectApi.getAssetImage : agentApi.getAssetImage} />}

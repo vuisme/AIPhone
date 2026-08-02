@@ -20,6 +20,8 @@ export type NodeType =
   | 'SUCCESS'
   | 'FAILURE'
 
+const VARIABLE_REFERENCE_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*$/
+
 export interface Position {
   x: number
   y: number
@@ -339,7 +341,7 @@ export function validateWorkflow(workflow: WorkflowDocument): ValidationResult {
     }
     if (node.type === 'IF') {
       const name = String(node.config.leftVariable ?? '')
-      if (!VARIABLE_PATTERN.test(name)) issues.push(`Node ${node.id} has invalid left variable ${name}`)
+      if (!VARIABLE_REFERENCE_PATTERN.test(name)) issues.push(`Node ${node.id} has invalid left variable ${name}`)
     }
 
     if (!node.disabled && (IMAGE_NODE_TYPES.has(node.type) || node.type === 'TAP_TEXT')) {

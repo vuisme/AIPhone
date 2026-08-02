@@ -80,6 +80,24 @@ class TtsWorkflowTest {
     }
 
     @Test
+    fun `audio artifact reference identifies the run device and private file location`() {
+        val reference = AgentFileReference.audioArtifact(
+            artifactId = "87b6b073-f3a6-4e0b-9c06-794e79f7e3b8",
+            fileName = "speech.wav",
+            absolutePath = "/data/user/0/com.aiphone.agent/files/audio/speech.wav",
+            sizeBytes = 1_024,
+        )
+
+        assertEquals("AIPHONE_ARTIFACT", reference.kind)
+        assertEquals("CURRENT_RUN_DEVICE", reference.scope)
+        assertEquals("AGENT_PRIVATE", reference.visibility)
+        assertEquals("audio/wav", reference.mimeType)
+        assertEquals("/api/runs/audio/87b6b073-f3a6-4e0b-9c06-794e79f7e3b8", reference.downloadPath)
+        assertEquals("/data/user/0/com.aiphone.agent/files/audio/speech.wav", reference.absolutePath)
+        assertEquals(1_024L, reference.sizeBytes)
+    }
+
+    @Test
     fun `accepts only opaque audio artifact IDs`() {
         assertTrue(AudioArtifactId.isValid("87b6b073-f3a6-4e0b-9c06-794e79f7e3b8"))
         assertFalse(AudioArtifactId.isValid("../workflow.json"))

@@ -38,7 +38,10 @@ import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.update.AppUpdater
 import com.aiphone.agent.update.InteractiveInstallResult
 import com.aiphone.agent.update.UpdateCheckResult
+import com.aiphone.agent.workflow.AndroidRuntimeCapabilityGateway
+import com.aiphone.agent.workflow.AndroidTtsGateway
 import org.json.JSONObject
+import java.util.Locale
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
@@ -57,6 +60,7 @@ class MainActivity : Activity() {
     private var dashboardRootValue: TextView? = null
     private var dashboardAccessibilityValue: TextView? = null
     private var dashboardWorkflowValue: TextView? = null
+    private var dashboardAiValue: TextView? = null
     private var workflowList: LinearLayout? = null
     private var workflowCountValue: TextView? = null
     private var settingsServiceValue: TextView? = null
@@ -85,6 +89,8 @@ class MainActivity : Activity() {
     private var updateStatus: TextView? = null
     private var connectionNotice: Pair<String, Int>? = null
     private var connectionNoticeGeneration = 0
+    private var runtimeCapabilityGeneration = 0
+    private val runtimeCapabilityGateway by lazy { AndroidRuntimeCapabilityGateway(this, AndroidTtsGateway(this)) }
 
     private val statusRefresh = object : Runnable {
         override fun run() {
@@ -230,6 +236,12 @@ class MainActivity : Activity() {
             dashboardAccessibilityValue = statusRow("UI INSPECTOR")
             addView(dashboardAccessibilityValue)
         })
+        addView(sectionTitle("VOICE & AI RUNTIME"))
+        addView(card().apply {
+            dashboardAiValue = statusRow("VOICE / AI RUNTIME")
+            addView(dashboardAiValue)
+            addView(actionButton("Quét lại Voice / AI", primary = false, action = ::refreshRuntimeCapabilities))
+        })
         addView(label("AI PHONE AUTOMATION SYSTEM", MUTED, 9f, true).apply {
             gravity = Gravity.CENTER
             letterSpacing = .16f
@@ -238,6 +250,42 @@ class MainActivity : Activity() {
         addView(label("Device Runtime · vc${BuildConfig.VERSION_CODE}", Color.rgb(78, 101, 93), 9f, false).apply {
             gravity = Gravity.CENTER
         })
+        refreshRuntimeCapabilities()
+    }
+
+    private fun refreshRuntimeCapabilities() {
+        val generation = ++runtimeCapabilityGeneration
+        dashboardAiValue?.apply {
+            text = "VOICE / AI RUNTIME\nĐang quét TTS engines, voice models và AI services..."
+            setTextColor(SKY)
+        }
+        thread(name = "AIPhone-CapabilityScan", isDaemon = true) {
+            val result = runCatching { runtimeCapabilityGateway.capabilities(forceRefresh = true) }
+            runOnUiThread {
+                if (generation != runtimeCapabilityGeneration) return@runOnUiThread
+                result.onSuccess { capabilities ->
+                    val engines = capabilities.tts.engines
+                    val voices = engines.sumOf { it.voices.size }
+                    val languages = engines.flatMap { engine -> engine.voices.map { it.languageTag } }.distinct().sorted()
+                    val serviceSummary = capabilities.aiServices.groupingBy { it.type }.eachCount()
+                    val details = buildList {
+                        add("${engines.size} TTS engine · $voices voice model · ${languages.size} ngôn ngữ")
+                        if (engines.isNotEmpty()) add(engines.joinToString(" · ") { "${it.label} (${it.voices.size})" })
+                        if (languages.isNotEmpty()) add("LANG · ${languages.take(8).joinToString(", ") { tag -> "${Locale.forLanguageTag(tag).getDisplayName(Locale.getDefault())} ($tag)" }}${if (languages.size > 8) "…" else ""}")
+                        add("Speech recognition · ${serviceSummary["SPEECH_RECOGNITION"] ?: 0} service")
+                        add("Text classifier · ${serviceSummary["TEXT_CLASSIFIER"] ?: 0} service")
+                        if (capabilities.aiServices.isNotEmpty()) add("SERVICES · ${capabilities.aiServices.joinToString(" · ") { it.label }}")
+                        if (capabilities.warnings.isNotEmpty()) add("WARN · ${capabilities.warnings.joinToString(" · ")}")
+                    }
+                    dashboardAiValue?.apply { text = "VOICE / AI RUNTIME\n${details.joinToString("\n")}"; setTextColor(if (capabilities.tts.available) ACID else AMBER) }
+                }.onFailure { error ->
+                    dashboardAiValue?.apply {
+                        text = "VOICE / AI RUNTIME\nKhông thể đọc capability\n${error.message ?: error.javaClass.simpleName}"
+                        setTextColor(DANGER)
+                    }
+                }
+            }
+        }
     }
 
     private fun buildWorkflowsPage(): View = scrollPage().apply {
@@ -698,6 +746,7 @@ class MainActivity : Activity() {
         dashboardRootValue = null
         dashboardAccessibilityValue = null
         dashboardWorkflowValue = null
+        dashboardAiValue = null
         workflowList = null
         workflowCountValue = null
         settingsServiceValue = null

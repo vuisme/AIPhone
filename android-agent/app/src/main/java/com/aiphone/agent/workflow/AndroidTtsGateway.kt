@@ -19,30 +19,38 @@ import java.util.concurrent.atomic.AtomicReference
 
 class AndroidTtsGateway(context: Context) : TtsGateway {
     private val applicationContext = context.applicationContext
-    @Volatile private var cachedCapabilities: Pair<Long, TtsCapabilities>? = null
 
     override fun capabilities(): TtsCapabilities {
         val now = System.currentTimeMillis()
         cachedCapabilities?.takeIf { now - it.first < CAPABILITY_CACHE_MS }?.let { return it.second }
-        val discovered = openSession(null).use { defaultSession ->
-            val defaultEngine = defaultSession.tts.defaultEngine
-            val engines = defaultSession.tts.engines.mapNotNull { engine ->
-                runCatching {
-                    openSession(engine.name).use { session ->
-                        TtsEngineCapability(
-                            packageName = engine.name,
-                            label = engine.label ?: engine.name,
-                            voices = session.voicePairs().map { it.second }.sortedWith(
-                                compareBy<TtsVoiceDescriptor> { it.languageTag }.thenBy { it.name },
-                            ),
-                        )
+        return synchronized(CAPABILITY_LOCK) {
+            cachedCapabilities?.takeIf { now - it.first < CAPABILITY_CACHE_MS }?.second ?: run {
+                val discovered = openSession(null).use { defaultSession ->
+                    val defaultEngine = defaultSession.tts.defaultEngine
+                    val engines = defaultSession.tts.engines.mapNotNull { engine ->
+                        runCatching {
+                            openSession(engine.name).use { session ->
+                                TtsEngineCapability(
+                                    packageName = engine.name,
+                                    label = engine.label ?: engine.name,
+                                    voices = session.voicePairs().map { it.second }.sortedWith(
+                                        compareBy<TtsVoiceDescriptor> { it.languageTag }.thenBy { it.name },
+                                    ),
+                                )
+                            }
+                        }.getOrNull()
                     }
-                }.getOrNull()
+                    TtsCapabilities(engines.isNotEmpty(), defaultEngine, engines)
+                }
+                cachedCapabilities = System.currentTimeMillis() to discovered
+                discovered
             }
-            TtsCapabilities(engines.isNotEmpty(), defaultEngine, engines)
         }
-        cachedCapabilities = now to discovered
-        return discovered
+    }
+
+    override fun refreshCapabilities(): TtsCapabilities {
+        synchronized(CAPABILITY_LOCK) { cachedCapabilities = null }
+        return capabilities()
     }
 
     override fun synthesize(options: TtsSpeakOptions, outputFile: File, isCancelled: () -> Boolean): TtsSynthesisResult =
@@ -176,6 +184,8 @@ class AndroidTtsGateway(context: Context) : TtsGateway {
     }
 
     companion object {
+        private val CAPABILITY_LOCK = Any()
+        @Volatile private var cachedCapabilities: Pair<Long, TtsCapabilities>? = null
         private const val INIT_TIMEOUT_SECONDS = 15L
         private const val SYNTHESIS_TIMEOUT_SECONDS = 120L
         private const val CAPABILITY_CACHE_MS = 5 * 60_000L

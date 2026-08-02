@@ -29,6 +29,7 @@ const SECURITY_HEADERS = {
 const API_PATHS = [
   /^\/api\/device$/,
   /^\/api\/capabilities\/tts$/,
+  /^\/api\/capabilities\/runtime$/,
   /^\/api\/screenshots$/,
   /^\/api\/input\/tap$/,
   /^\/api\/ui-hierarchy$/,

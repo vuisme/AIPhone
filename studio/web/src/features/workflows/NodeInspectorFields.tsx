@@ -1,7 +1,9 @@
+import { RefreshCw } from 'lucide-react'
 import type { AssetRecord, NodeType, WorkflowValueType } from '../../contracts/workflow'
 import type { TtsCapabilities } from '../../api/client'
 import type { NodeDefinition, NodeField } from './nodeCatalog'
 import { androidUserOptions } from './androidUsers'
+import { languageDisplayName, voiceDisplayLabel } from './ttsPresentation'
 
 interface NodeInspectorFieldsProps {
   definition: NodeDefinition
@@ -10,6 +12,9 @@ interface NodeInspectorFieldsProps {
   assets: AssetRecord[]
   variables: string[]
   ttsCapabilities?: TtsCapabilities
+  ttsCapabilitiesLoading?: boolean
+  ttsCapabilitiesError?: string
+  onRefreshTtsCapabilities?: () => void
   onChange: (key: string, value: unknown) => void
 }
 
@@ -68,6 +73,15 @@ function fieldControl(field: NodeField, props: NodeInspectorFieldsProps) {
       )
     case 'androidUser':
       return <select value={Number(value)} onChange={(event) => props.onChange(field.key, Number(event.target.value))}>{androidUserOptions(props.nodeType).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+    case 'ttsLanguage': {
+      const current = String(value ?? 'vi-VN')
+      const languages = Array.from(new Set((props.ttsCapabilities?.engines ?? []).flatMap((engine) => engine.voices.map((voice) => voice.languageTag)))).sort()
+      if (current && !languages.includes(current)) languages.unshift(current)
+      if (languages.length === 0) return <input value={current} placeholder="vi-VN" onChange={(event) => props.onChange(field.key, event.target.value)} />
+      return <select value={current} onChange={(event) => props.onChange(field.key, event.target.value)}>
+        {languages.map((languageTag) => <option key={languageTag} value={languageTag}>{languageDisplayName(languageTag)} · {languageTag}</option>)}
+      </select>
+    }
     case 'ttsEngine':
       return <select value={String(value ?? '')} onChange={(event) => props.onChange(field.key, event.target.value)}>
         <option value="">Android mặc định{props.ttsCapabilities?.defaultEngine ? ` · ${props.ttsCapabilities.defaultEngine}` : ''}</option>
@@ -83,7 +97,8 @@ function fieldControl(field: NodeField, props: NodeInspectorFieldsProps) {
         .filter((voice) => !language || voice.languageTag.toLowerCase().split('-')[0] === language)
       return <select value={String(value ?? '')} onChange={(event) => props.onChange(field.key, event.target.value)}>
         <option value="">Tự chọn voice tương thích (khuyên dùng)</option>
-        {voices.map((voice) => <option key={voice.name} value={voice.name}>{voice.languageTag} · {voice.name} · {voice.requiresNetwork ? 'Cloud' : 'Local'}</option>)}
+        {String(value ?? '') && !voices.some((voice) => voice.name === value) && <option value={String(value)}>Không có trên máy này · {String(value)}</option>}
+        {voices.map((voice) => <option key={voice.name} value={voice.name}>{voiceDisplayLabel(voice)}</option>)}
       </select>
     }
     case 'checkbox':
@@ -110,14 +125,21 @@ function fieldControl(field: NodeField, props: NodeInspectorFieldsProps) {
 }
 
 export function NodeInspectorFields(props: NodeInspectorFieldsProps) {
-  return props.definition.fields.map((field) => {
-    if (field.visibleWhen && props.config[field.visibleWhen.key] !== field.visibleWhen.equals) return null
-    const isCheckbox = field.kind === 'checkbox'
-    return (
-      <label className={isCheckbox ? 'checkbox-label' : undefined} key={field.key}>
-        {isCheckbox ? <>{fieldControl(field, props)} {field.label}</> : <>{field.label}{fieldControl(field, props)}</>}
-        {field.hint && <small>{field.hint}</small>}
-      </label>
-    )
-  })
+  const voiceCount = props.ttsCapabilities?.engines.reduce((total, engine) => total + engine.voices.length, 0) ?? 0
+  return <>
+    {props.nodeType === 'TTS_SPEAK' && <section className="tts-capability-summary" aria-live="polite">
+      <div><span>MODEL SOURCE</span><strong>{props.ttsCapabilities ? `${props.ttsCapabilities.engines.length} engine · ${voiceCount} voice trên máy đang chọn` : 'Chưa có dữ liệu từ điện thoại'}</strong>{props.ttsCapabilitiesError && <small>{props.ttsCapabilitiesError}</small>}</div>
+      <button type="button" onClick={props.onRefreshTtsCapabilities} disabled={props.ttsCapabilitiesLoading || !props.onRefreshTtsCapabilities} aria-label="Quét lại TTS model trên điện thoại"><RefreshCw size={13} className={props.ttsCapabilitiesLoading ? 'spin' : ''} /></button>
+    </section>}
+    {props.definition.fields.map((field) => {
+      if (field.visibleWhen && props.config[field.visibleWhen.key] !== field.visibleWhen.equals) return null
+      const isCheckbox = field.kind === 'checkbox'
+      return (
+        <label className={isCheckbox ? 'checkbox-label' : undefined} key={field.key}>
+          {isCheckbox ? <>{fieldControl(field, props)} {field.label}</> : <>{field.label}{fieldControl(field, props)}</>}
+          {field.hint && <small>{field.hint}</small>}
+        </label>
+      )
+    })}
+  </>
 }

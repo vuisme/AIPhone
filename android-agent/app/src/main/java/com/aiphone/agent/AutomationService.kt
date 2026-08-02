@@ -17,6 +17,7 @@ import com.aiphone.agent.accessibility.AccessibilityController
 import com.aiphone.agent.root.CommandResult
 import com.aiphone.agent.callback.CallbackStatus
 import com.aiphone.agent.callback.CloudCallbackClient
+import com.aiphone.agent.vision.AndroidMlKitScreenOcrGateway
 
 class AutomationService : Service() {
     private var server: AgentHttpServer? = null
@@ -34,13 +35,14 @@ class AutomationService : Service() {
         val store = AgentStore(this)
         val ttsGateway = AndroidTtsGateway(this)
         val runtimeCapabilityGateway = AndroidRuntimeCapabilityGateway(this, ttsGateway)
+        val screenOcrGateway = AndroidMlKitScreenOcrGateway()
         val executor = WorkflowExecutor(
             store = store,
             ttsGateway = ttsGateway,
             ensureAccessibility = { AccessibilityController.ensureEnabled(this) },
             launchMainApp = ::launchMainPackage,
         )
-        server = AgentHttpServer(this, store, executor, ttsGateway, runtimeCapabilityGateway).also { it.start() }
+        server = AgentHttpServer(this, store, executor, ttsGateway, runtimeCapabilityGateway, screenOcrGateway).also { it.start() }
         callbackClient = startCallbackClient(store)
     }
 

@@ -12,6 +12,7 @@ import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.workflow.WorkflowExecutor
 import com.aiphone.agent.workflow.TtsGateway
 import com.aiphone.agent.workflow.RuntimeCapabilityGateway
+import com.aiphone.agent.vision.ScreenOcrGateway
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -47,6 +48,7 @@ class AgentHttpServer(
     private val executor: WorkflowExecutor,
     private val ttsGateway: TtsGateway,
     private val runtimeCapabilityGateway: RuntimeCapabilityGateway,
+    private val screenOcrGateway: ScreenOcrGateway,
 ) {
     private val running = AtomicBoolean(false)
     private val workers = Executors.newFixedThreadPool(4)
@@ -113,6 +115,7 @@ class AgentHttpServer(
                     HttpResponse(200, "audio/wav", file.readBytes())
                 }
                 request.method == "POST" && request.path == "/api/screenshots" -> HttpResponse(200, "image/png", RootGateway.captureScreen())
+                request.method == "POST" && request.path == "/api/vision/ocr-screen" -> HttpResponse.json(body = screenOcrGateway.recognizeScreen().toJson())
                 request.method == "POST" && request.path == "/api/input/tap" -> tapInput(request.body)
                 request.method == "POST" && request.path == "/api/ui-hierarchy" -> uiHierarchy()
                 request.method == "GET" && request.path == "/api/workflows" -> HttpResponse(200, "application/json; charset=utf-8", store.listWorkflows().toByteArray())
@@ -193,6 +196,7 @@ class AgentHttpServer(
                 .put("mainUserLaunch", true)
                 .put("accessibilityInput", rootGranted || accessibilityReady)
                 .put("imageMatching", rootGranted)
+                .put("screenOcr", rootGranted)
                 .put("xspace", rootGranted)
                 .put("tts", true)
                 .put("silentUpdate", rootGranted))

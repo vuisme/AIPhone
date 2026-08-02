@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 $studioDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repositoryDirectory = Split-Path -Parent $studioDirectory
 $composeFile = Join-Path $studioDirectory 'compose.yml'
+$tunnelComposeFile = Join-Path $studioDirectory 'compose.tunnel.yml'
 $runtimeDirectory = Join-Path $studioDirectory '.runtime'
 $secretsFile = Join-Path $runtimeDirectory 'studio.env'
 $pidFile = Join-Path $runtimeDirectory 'bridge.pid'
@@ -73,7 +74,7 @@ function Wait-ForHealth([string]$url, [string]$expectedMode, [int]$attempts = 30
 
 function Wait-ForContainer([string]$service, [int]$attempts = 40) {
     foreach ($attempt in 1..$attempts) {
-        $containerId = docker compose --env-file $secretsFile -f $composeFile ps -q $service
+        $containerId = docker compose --env-file $secretsFile -f $composeFile -f $tunnelComposeFile ps -q $service
         if ($LASTEXITCODE -eq 0 -and $containerId) {
             $status = docker inspect --format '{{.State.Health.Status}}' $containerId
             if ($LASTEXITCODE -eq 0 -and $status -eq 'healthy') { return }
@@ -104,13 +105,13 @@ if (-not (Test-Path -LiteralPath $hostModules) -or $installedLockHash -ne $hostL
 }
 
 if ($Build) {
-    docker compose --env-file $secretsFile -f $composeFile build
+    docker compose --env-file $secretsFile -f $composeFile -f $tunnelComposeFile build studio-cloud
 } else {
-    docker compose --env-file $secretsFile -f $composeFile pull
+    docker compose --env-file $secretsFile -f $composeFile -f $tunnelComposeFile pull
 }
 if ($LASTEXITCODE -ne 0) { throw 'Unable to prepare the Studio services.' }
 
-docker compose --env-file $secretsFile -f $composeFile up -d postgres redis
+docker compose --env-file $secretsFile -f $composeFile -f $tunnelComposeFile up -d postgres redis
 if ($LASTEXITCODE -ne 0) { throw 'Unable to start PostgreSQL and Redis.' }
 Wait-ForContainer 'postgres'
 Wait-ForContainer 'redis'
@@ -135,11 +136,11 @@ $bridgeStarted = $true
 
 try {
     Wait-ForHealth 'http://127.0.0.1:4174/healthz' 'bridge'
-    docker compose --env-file $secretsFile -f $composeFile up -d --no-build studio
+    docker compose --env-file $secretsFile -f $composeFile -f $tunnelComposeFile up -d --no-build studio-cloud
     if ($LASTEXITCODE -ne 0) { throw 'Unable to start the Studio web container.' }
-    Wait-ForHealth 'http://127.0.0.1:4173/healthz' 'static'
-    Start-Process 'http://127.0.0.1:4173'
-    Write-Host 'AIPhone Studio is running at http://127.0.0.1:4173'
+    Wait-ForHealth 'http://127.0.0.1:4175/healthz' 'full'
+    Start-Process 'http://127.0.0.1:4175'
+    Write-Host 'AIPhone Studio is running at http://127.0.0.1:4175'
 } catch {
     $bridgeProcess = Get-BridgeProcess
     if ($bridgeStarted -and $bridgeProcess) {

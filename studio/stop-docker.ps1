@@ -1,13 +1,14 @@
 $ErrorActionPreference = 'Stop'
 $studioDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $composeFile = Join-Path $studioDirectory 'compose.yml'
+$tunnelComposeFile = Join-Path $studioDirectory 'compose.tunnel.yml'
 $secretsFile = Join-Path $studioDirectory '.runtime\studio.env'
 $pidFile = Join-Path $studioDirectory '.runtime\bridge.pid'
 
 if (Test-Path -LiteralPath $secretsFile) {
-    docker compose --env-file $secretsFile -f $composeFile down
+    docker compose --env-file $secretsFile -f $composeFile -f $tunnelComposeFile down
 } else {
-    docker compose -f $composeFile down
+    docker compose -f $composeFile -f $tunnelComposeFile down
 }
 $composeFailed = $LASTEXITCODE -ne 0
 

@@ -71,7 +71,7 @@ Start the published Studio image and the local USB bridge with one command:
 
 Build the image from the current checkout by adding `-Build`. Stop both processes with `.\studio\stop-docker.cmd`.
 
-Docker Compose runs PostgreSQL, Redis and the web UI. Studio is available at `127.0.0.1:4173`; the authenticated USB bridge remains on the Windows host at `127.0.0.1:4174`, because Linux containers under Docker Desktop cannot reliably access Windows USB devices. All service ports are bound to loopback and are not exposed to the LAN.
+Docker Compose runs PostgreSQL, Redis and the full web UI/API. Studio is available at `127.0.0.1:4175`; the authenticated USB bridge remains on the Windows host at `127.0.0.1:4174`, because Linux containers under Docker Desktop cannot reliably access Windows USB devices. The obsolete Windows UI on port `4173` is no longer started.
 
 The launcher generates `studio/.runtime/studio.env` once and reuses it across upgrades. The first visit creates the initial administrator. Do not delete the runtime secret file or the named PostgreSQL volume: together they preserve accounts, workflows, device grants and decryptable pairing credentials.
 
@@ -96,7 +96,7 @@ Then:
 
 1. Open `AIPhone Agent`; enable its service and Accessibility permission. Grant KernelSU root only for image/XSpace workflows.
 2. Enable USB debugging and accept the computer's RSA key.
-3. Open `http://127.0.0.1:4173` if it did not open automatically.
+3. Open `http://127.0.0.1:4175` if it did not open automatically.
 4. Create the initial administrator or sign in with an existing Studio account.
 5. Select an authorized phone by model and ADB serial.
 6. Enter its pairing token only if the backend has not already stored one.

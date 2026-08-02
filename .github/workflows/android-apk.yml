@@ -142,7 +142,7 @@ jobs:
           cp studio/host/*.mjs studio/host/package.json studio/host/package-lock.json "$PACKAGE/studio/host/"
           cp -R studio/web/dist studio/web/public studio/web/src "$PACKAGE/studio/web/"
           cp studio/web/index.html studio/web/package.json studio/web/package-lock.json studio/web/tsconfig.json studio/web/vite.config.ts "$PACKAGE/studio/web/"
-          cp studio/Dockerfile studio/compose.yml studio/compose.cloud.yml studio/cloud.env.example studio/start-docker.cmd studio/start-docker.ps1 studio/stop-docker.cmd studio/stop-docker.ps1 studio/start-native.cmd studio/README.md "$PACKAGE/studio/"
+          cp studio/Dockerfile studio/compose.yml studio/compose.cloud.yml studio/compose.tunnel.yml studio/cloud.env.example studio/start-docker.cmd studio/start-docker.ps1 studio/stop-docker.cmd studio/stop-docker.ps1 studio/start-native.cmd studio/README.md "$PACKAGE/studio/"
           cp .dockerignore "$PACKAGE/.dockerignore"
           cp README.md "$PACKAGE/README.md"
           cd artifacts

@@ -1,5 +1,16 @@
 services:
   studio:
+    image: ghcr.io/vuisme/aiphone-studio:latest
+    build:
+      context: ..
+      dockerfile: studio/Dockerfile
+    container_name: aiphone-studio
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       AIPHONE_STATIC_ONLY: "0"
       AIPHONE_ADB_DISABLED: "1"
@@ -10,3 +21,5 @@ services:
       REDIS_URL: redis://:${AIPHONE_REDIS_PASSWORD}@redis:6379
       AIPHONE_CREDENTIAL_KEY: ${AIPHONE_CREDENTIAL_KEY:?AIPHONE_CREDENTIAL_KEY is required}
     command: ["node", "host/server.mjs", "--port=4173"]
+    ports:
+      - "127.0.0.1:4173:4173"

@@ -13,7 +13,12 @@ import { publicUser } from './auth-service.mjs'
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
 const studioDirectory = path.resolve(moduleDirectory, '..', 'web', 'dist')
-const BRIDGE_ORIGINS = new Set(['http://127.0.0.1:4173', 'http://localhost:4173'])
+const BRIDGE_ORIGINS = new Set([
+  'http://127.0.0.1:4173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4175',
+  'http://localhost:4175',
+])
 const SESSION_COOKIE = 'aiphone.sid'
 const SECURITY_HEADERS = {
   'Content-Security-Policy': "default-src 'self'; connect-src 'self' http://127.0.0.1:4174 http://localhost:4174; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",

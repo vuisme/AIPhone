@@ -76,6 +76,8 @@ test('agentPathFromBridgeUrl rejects traversal and non-API targets', () => {
 test('bridge-only CORS accepts only local Studio origins', () => {
   assert.equal(bridgeCorsHeaders('http://127.0.0.1:4173')['Access-Control-Allow-Origin'], 'http://127.0.0.1:4173')
   assert.equal(bridgeCorsHeaders('http://localhost:4173')['Access-Control-Allow-Origin'], 'http://localhost:4173')
+  assert.equal(bridgeCorsHeaders('http://127.0.0.1:4175')['Access-Control-Allow-Origin'], 'http://127.0.0.1:4175')
+  assert.equal(bridgeCorsHeaders('http://localhost:4175')['Access-Control-Allow-Origin'], 'http://localhost:4175')
   assert.equal(bridgeCorsHeaders('http://192.168.1.5:4173'), null)
   assert.deepEqual(bridgeCorsHeaders(undefined), {})
 })

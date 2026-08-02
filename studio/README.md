@@ -4,7 +4,7 @@ This directory contains the complete account-aware PC-side Studio deployment:
 
 - `web/` - React workflow editor.
 - `host/` - authenticated loopback-only Studio API and USB ADB bridge.
-- `Dockerfile` and `compose.yml` - web UI, PostgreSQL and Redis deployment.
+- `Dockerfile`, `compose.yml` and `compose.tunnel.yml` - web UI, PostgreSQL and Redis deployment.
 - `start-docker.cmd` - starts the host USB bridge and Docker web container.
 - `start-native.cmd` - runs the original all-native Node.js deployment.
 
@@ -32,7 +32,7 @@ Stop both the container and USB bridge:
 
 The first start generates `studio/.runtime/studio.env` with random database, Redis and AES credential-encryption secrets. Keep this ignored file together with the PostgreSQL volume when moving or restoring an installation; replacing the AES key makes existing encrypted pairing tokens unreadable.
 
-Compose starts PostgreSQL on `127.0.0.1:55432`, Redis on `127.0.0.1:56379`, and the web UI on `127.0.0.1:4173`. The authenticated USB bridge runs directly on Windows at `127.0.0.1:4174` because Docker Desktop Linux containers do not have reliable direct access to Windows USB devices. All endpoints remain loopback-only.
+Compose starts PostgreSQL on `127.0.0.1:55432`, Redis on `127.0.0.1:56379`, and the single full Studio UI/API on `127.0.0.1:4175`. The authenticated USB bridge runs directly on Windows at `127.0.0.1:4174` because Docker Desktop Linux containers do not have reliable direct access to Windows USB devices. The obsolete local UI on port `4173` is no longer started on Windows.
 
 On the first visit, create the initial administrator. Administrators can manage all members, workflows, devices and grants. Users can manage owned resources and use resources explicitly granted to them. Pairing tokens are encrypted in PostgreSQL and are never returned to browser JavaScript.
 
@@ -58,9 +58,9 @@ In Android Agent, open **Cloud Callback**, enter `https://studio.example.com`, e
 
 The initial callback gateway supports one Studio API replica. Do not horizontally scale the `studio` service until a shared socket gateway is introduced.
 
-## Cloudflare Tunnel beside local USB mode
+## Cloudflare Tunnel and local USB mode
 
-On a Windows Studio host, keep the local static UI and USB bridge running on ports `4173` and `4174`, then start a separate full API instance for Cloud Callback on loopback port `4175`:
+On a Windows Studio host, the same full Studio instance on loopback port `4175` serves both Cloud Callback and the local USB bridge on port `4174`:
 
 ```powershell
 docker compose --env-file .\studio\.runtime\studio.env -f .\studio\compose.yml -f .\studio\compose.tunnel.yml up -d --build studio-cloud

@@ -24,6 +24,10 @@ class AgentPreferences(context: Context) {
         get() = values.getString("callbackUrl", "").orEmpty()
         set(value) { values.edit().putString("callbackUrl", value.trim()).apply() }
 
+    var callbackAccountName: String
+        get() = values.getString("callbackAccountName", "").orEmpty()
+        set(value) { values.edit().putString("callbackAccountName", value.trim()).apply() }
+
     fun callbackIdentity(): CallbackIdentity {
         val deviceId = values.getString("callbackDeviceId", null)
         val secret = values.getString("callbackDeviceSecret", null)

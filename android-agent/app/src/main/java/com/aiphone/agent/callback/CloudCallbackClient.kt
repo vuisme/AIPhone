@@ -13,14 +13,13 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 import java.net.HttpURLConnection
-import java.net.URI
 import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 enum class CallbackState { DISABLED, CONNECTING, WAITING_PAIRING, ONLINE, ERROR }
-data class CallbackStatus(val state: CallbackState, val message: String, val serial: String? = null)
+data class CallbackStatus(val state: CallbackState, val message: String, val serial: String? = null, val accountName: String? = null)
 
 class CloudCallbackClient(
     context: Context,
@@ -66,7 +65,7 @@ class CloudCallbackClient(
             publish(CallbackState.ERROR, it.message ?: "Callback URL không hợp lệ")
             return
         }
-        publish(CallbackState.CONNECTING, "Đang kết nối ${URI(target).host}...")
+        publish(CallbackState.CONNECTING, "Đang kết nối Studio...")
         socket = http.newWebSocket(Request.Builder().url(target).build(), listener)
     }
 
@@ -92,8 +91,15 @@ class CloudCallbackClient(
             runCatching {
                 val message = JSONObject(text)
                 when (message.getString("type")) {
-                    "PAIRING_REQUIRED" -> publish(CallbackState.WAITING_PAIRING, "Đang chờ nhập mã pairing trên Studio")
-                    "READY", "PAIRED" -> publish(CallbackState.ONLINE, "Đã kết nối Cloud Callback", message.optString("serial").ifBlank { null })
+                    "PAIRING_REQUIRED" -> {
+                        preferences.callbackAccountName = ""
+                        publish(CallbackState.WAITING_PAIRING, "Đang chờ xác thực trên Studio", accountName = null)
+                    }
+                    "READY", "PAIRED" -> {
+                        val accountName = message.optString("accountName").ifBlank { preferences.callbackAccountName }.ifBlank { null }
+                        if (accountName != null) preferences.callbackAccountName = accountName
+                        publish(CallbackState.ONLINE, "Đã kết nối Studio", message.optString("serial").ifBlank { null }, accountName)
+                    }
                     "PAIRING_EXPIRED" -> {
                         preferences.rotateCallbackPairingCode()
                         publish(CallbackState.CONNECTING, "Mã pairing hết hạn; Agent đang tạo mã mới")
@@ -165,8 +171,8 @@ class CloudCallbackClient(
         }
     }
 
-    private fun publish(state: CallbackState, message: String, serial: String? = null) {
-        status = CallbackStatus(state, message, serial)
+    private fun publish(state: CallbackState, message: String, serial: String? = null, accountName: String? = preferences.callbackAccountName.ifBlank { null }) {
+        status = CallbackStatus(state, message, serial, accountName)
     }
 
     private data class LocalResult(val status: Int, val contentType: String, val body: ByteArray)

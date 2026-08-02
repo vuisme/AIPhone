@@ -38,7 +38,7 @@ test('CallbackHub claims an online device with a one-time pairing code', async (
   }
   const repository = {
     authenticateCallbackDevice: async () => undefined,
-    claimCallbackDevice: async (_user, hello) => ({ serial: `cloud:${hello.deviceId}`, id: 'device-row' }),
+    claimCallbackDevice: async (user, hello) => ({ serial: `cloud:${hello.deviceId}`, id: 'device-row', ownerDisplayName: user.displayName }),
   }
   const hub = new CallbackHub({ repository, redis, log: () => undefined })
   const socket = new FakeSocket()
@@ -50,16 +50,17 @@ test('CallbackHub claims an online device with a one-time pairing code', async (
   await nextTurn()
   assert.equal(socket.messages[0].type, 'PAIRING_REQUIRED')
 
-  const device = await hub.claim({ id: 'owner' }, 'abcd efgh 23')
+  const device = await hub.claim({ id: 'owner', displayName: 'Phone Farm Admin' }, 'abcd efgh 23')
   assert.equal(device.serial, 'cloud:device-installation-1234')
   assert.equal(socket.messages.at(-1).type, 'PAIRED')
+  assert.equal(socket.messages.at(-1).accountName, 'Phone Farm Admin')
   assert.equal(hub.isOnline(device.serial), true)
   hub.close()
 })
 
 test('CallbackHub correlates commands with binary device results', async () => {
   const repository = {
-    authenticateCallbackDevice: async () => ({ serial: 'cloud:known' }),
+    authenticateCallbackDevice: async () => ({ serial: 'cloud:known', ownerDisplayName: 'Phone Farm Admin' }),
     markCallbackSeen: async () => undefined,
   }
   const hub = new CallbackHub({ repository, redis: {}, log: () => undefined })
@@ -70,6 +71,8 @@ test('CallbackHub correlates commands with binary device results', async () => {
     pairingCodeHash: 'a'.repeat(64), metadata: { model: 'Xiaomi' },
   })))
   await nextTurn()
+  assert.equal(socket.messages[0].type, 'READY')
+  assert.equal(socket.messages[0].accountName, 'Phone Farm Admin')
 
   const responsePromise = hub.request('cloud:known', { method: 'GET', path: '/api/device' })
   const command = socket.messages.at(-1)

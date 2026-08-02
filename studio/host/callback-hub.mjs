@@ -99,7 +99,7 @@ export class CallbackHub {
       this.promote(connection, existing.serial)
       await this.repository.markCallbackSeen(existing.serial, hello.metadata)
       this.log('info', 'callback_device_connected', { serial: existing.serial, model: hello.metadata.model })
-      connection.socket.send(JSON.stringify({ type: 'READY', serial: existing.serial }))
+      connection.socket.send(JSON.stringify({ type: 'READY', serial: existing.serial, accountName: existing.ownerDisplayName }))
       return
     }
     const previous = this.pendingByDeviceId.get(hello.deviceId)
@@ -149,7 +149,7 @@ export class CallbackHub {
     await this.redis.del(attemptsKey)
     this.promote(connection, device.serial)
     this.log('info', 'callback_device_paired', { serial: device.serial, ownerUserId: user.id })
-    connection.socket.send(JSON.stringify({ type: 'PAIRED', serial: device.serial }))
+    connection.socket.send(JSON.stringify({ type: 'PAIRED', serial: device.serial, accountName: device.ownerDisplayName || user.displayName }))
     return device
   }
 

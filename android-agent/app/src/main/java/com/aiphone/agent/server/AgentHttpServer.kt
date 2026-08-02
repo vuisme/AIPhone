@@ -10,6 +10,7 @@ import com.aiphone.agent.root.RootGateway
 import com.aiphone.agent.root.SafeCommands
 import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.workflow.WorkflowExecutor
+import com.aiphone.agent.workflow.TtsGateway
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -43,6 +44,7 @@ class AgentHttpServer(
     private val context: Context,
     private val store: AgentStore,
     private val executor: WorkflowExecutor,
+    private val ttsGateway: TtsGateway,
 ) {
     private val running = AtomicBoolean(false)
     private val workers = Executors.newFixedThreadPool(4)
@@ -96,8 +98,16 @@ class AgentHttpServer(
             val workflowPath = WORKFLOW_PATH.matchEntire(request.path)
             val assetPath = WORKFLOW_ASSET_PATH.matchEntire(request.path)
             val inventoryPath = WORKFLOW_INVENTORY_PATH.matchEntire(request.path)
+            val audioPath = AUDIO_ARTIFACT_PATH.matchEntire(request.path)
             when {
                 request.method == "GET" && request.path == "/api/device" -> deviceHealth()
+                request.method == "GET" && request.path == "/api/capabilities/tts" -> HttpResponse.json(body = ttsGateway.capabilities().toJson())
+                audioPath != null && request.method == "GET" -> {
+                    val file = store.audioArtifactFile(audioPath.groupValues[1])
+                    require(file.isFile) { "Audio artifact is missing or expired" }
+                    require(file.length() <= MAX_AUDIO_RESPONSE_BYTES) { "Audio artifact is too large" }
+                    HttpResponse(200, "audio/wav", file.readBytes())
+                }
                 request.method == "POST" && request.path == "/api/screenshots" -> HttpResponse(200, "image/png", RootGateway.captureScreen())
                 request.method == "POST" && request.path == "/api/input/tap" -> tapInput(request.body)
                 request.method == "POST" && request.path == "/api/ui-hierarchy" -> uiHierarchy()
@@ -180,6 +190,7 @@ class AgentHttpServer(
                 .put("accessibilityInput", rootGranted || accessibilityReady)
                 .put("imageMatching", rootGranted)
                 .put("xspace", rootGranted)
+                .put("tts", true)
                 .put("silentUpdate", rootGranted))
         }
         return HttpResponse.json(body = body)
@@ -287,8 +298,10 @@ class AgentHttpServer(
         private val WORKFLOW_PATH = Regex("^/api/workflows/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})$")
         private val WORKFLOW_ASSET_PATH = Regex("^/api/workflows/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})/assets/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})$")
         private val WORKFLOW_INVENTORY_PATH = Regex("^/api/workflows/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})/inventory$")
+        private val AUDIO_ARTIFACT_PATH = Regex("^/api/runs/audio/([0-9a-f-]{36})$")
         private const val PORT = 8765
         private const val MAX_BODY_BYTES = 16 * 1024 * 1024
+        private const val MAX_AUDIO_RESPONSE_BYTES = 15 * 1024 * 1024L
         private const val MAX_HEADER_LINE = 16 * 1024
     }
 }

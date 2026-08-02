@@ -4,6 +4,7 @@ export type NodeType =
   | 'SET_VARIABLE'
   | 'IF'
   | 'LOG'
+  | 'TTS_SPEAK'
   | 'WAIT_IMAGE'
   | 'IF_IMAGE'
   | 'TAP_IMAGE'
@@ -128,7 +129,7 @@ export interface ValidationResult {
 const IMAGE_NODE_TYPES = new Set<NodeType>(['WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE'])
 const NODE_TYPES = new Set<NodeType>([
   'START', 'DELAY', 'SET_VARIABLE', 'IF', 'LOG', 'WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE', 'TAP_TEXT', 'TAP_POINT', 'SWIPE',
-  'LAUNCH_APP', 'FORCE_STOP_APP', 'CREATE_CLONE', 'DELETE_CLONE', 'CLEAR_CLONE', 'LOOP', 'SUCCESS', 'FAILURE',
+  'TTS_SPEAK', 'LAUNCH_APP', 'FORCE_STOP_APP', 'CREATE_CLONE', 'DELETE_CLONE', 'CLEAR_CLONE', 'LOOP', 'SUCCESS', 'FAILURE',
 ])
 const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/
 const VARIABLE_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
@@ -331,6 +332,10 @@ export function validateWorkflow(workflow: WorkflowDocument): ValidationResult {
     if (node.type === 'SET_VARIABLE') {
       const name = String(node.config.name ?? '')
       if (!VARIABLE_PATTERN.test(name)) issues.push(`Node ${node.id} has invalid variable name ${name}`)
+    }
+    if (node.type === 'TTS_SPEAK') {
+      const name = String(node.config.outputVariable ?? '')
+      if (name && !VARIABLE_PATTERN.test(name)) issues.push(`Node ${node.id} has invalid output variable ${name}`)
     }
     if (node.type === 'IF') {
       const name = String(node.config.leftVariable ?? '')

@@ -63,6 +63,7 @@ data class RunLogEntry(
 
 class WorkflowExecutor(
     private val store: AgentStore,
+    private val ttsGateway: TtsGateway? = null,
     private val ensureAccessibility: () -> Boolean = { AIPhoneAccessibilityService.instance != null },
     private val launchMainApp: (String) -> com.aiphone.agent.root.CommandResult = { com.aiphone.agent.root.CommandResult(-1, "Main-user launch is unavailable".toByteArray()) },
 ) {
@@ -179,6 +180,7 @@ class WorkflowExecutor(
                 if (disabled) appendLog("WARN", "Bỏ qua node đang disable", nodeId)
                 else appendLog("INFO", result?.description() ?: "Node hoàn tất", nodeId)
                 status.updateAndGet { it.copy(variables = context.snapshot(), lastResult = result) }
+                if (cancellation.get()) return finish(RunState.STOPPED, "Đã dừng theo yêu cầu")
 
                 when (nodeType.takeUnless { disabled }) {
                     "SUCCESS" -> return finish(RunState.SUCCESS, context.interpolate(node.optJSONObject("config")?.optString("message", "Hoàn tất") ?: "Hoàn tất"))
@@ -238,6 +240,7 @@ class WorkflowExecutor(
                 appendLog("INFO", message)
                 NodeResult(value = RunValue(WorkflowValueType.STRING, message))
             }
+            "TTS_SPEAK" -> speakText(config, context)
             "WAIT_IMAGE" -> NodeResult(outcome = waitForImage(config, workflowId))
             "IF_IMAGE" -> NodeResult(outcome = if (findImage(config, workflowId) != null) "FOUND" else "TIMEOUT")
             "TAP_IMAGE" -> NodeResult(outcome = tapImage(config, workflowId))
@@ -274,6 +277,41 @@ class WorkflowExecutor(
         val value = RunValue.fromLiteral(type, resolvedValue)
         context.set(name, value)
         return NodeResult(value = value, metadata = mapOf("name" to name))
+    }
+
+    private fun speakText(config: JSONObject, context: RunContext): NodeResult {
+        val gateway = ttsGateway ?: error("Android TTS is unavailable")
+        val options = TtsSpeakOptions.fromConfig(config, context)
+        val (artifactId, outputFile) = store.createAudioArtifact()
+        return try {
+            val synthesis = gateway.synthesize(options, outputFile, cancellation::get)
+            val keepAudio = options.saveAudio
+            val output = JSONObject()
+                .put("text", options.text)
+                .put("artifactId", if (keepAudio) artifactId else JSONObject.NULL)
+                .put("fileName", if (keepAudio) outputFile.name else JSONObject.NULL)
+                .put("engine", synthesis.enginePackage)
+                .put("voice", synthesis.voiceName)
+                .put("languageTag", synthesis.languageTag)
+                .put("played", synthesis.played)
+                .put("saved", keepAudio)
+                .put("durationMs", synthesis.durationMs)
+            if (!keepAudio) store.deleteAudioArtifact(artifactId)
+            TtsResultBinder.assign(context, options.outputVariable, output)
+            NodeResult(
+                outcome = "SPOKEN",
+                value = RunValue(WorkflowValueType.JSON, output),
+                metadata = mapOf(
+                    "audioAvailable" to keepAudio,
+                    "artifactId" to if (keepAudio) artifactId else null,
+                    "outputVariable" to options.outputVariable,
+                ),
+            )
+        } catch (error: Throwable) {
+            store.deleteAudioArtifact(artifactId)
+            if (cancellation.get()) return NodeResult(outcome = "CANCELLED")
+            throw error
+        }
     }
 
     private fun conditionSpec(config: JSONObject): ConditionSpec {

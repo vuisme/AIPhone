@@ -139,8 +139,30 @@ export interface DeviceHealth {
     accessibilityInput: boolean
     imageMatching: boolean
     xspace: boolean
+    tts?: boolean
     silentUpdate: boolean
   }
+}
+
+export interface TtsVoiceCapability {
+  name: string
+  languageTag: string
+  quality: number
+  latency: number
+  requiresNetwork: boolean
+  features: string[]
+}
+
+export interface TtsEngineCapability {
+  packageName: string
+  label: string
+  voices: TtsVoiceCapability[]
+}
+
+export interface TtsCapabilities {
+  available: boolean
+  defaultEngine?: string
+  engines: TtsEngineCapability[]
 }
 
 export interface RunStatus {
@@ -456,6 +478,16 @@ async function parseJson<T>(response: Response): Promise<T> {
 export const agentApi = {
   async getDevice(serial = selectedSerial): Promise<DeviceHealth> {
     return parseJson(await agentFetch('/api/device', {}, serial))
+  },
+
+  async getTtsCapabilities(serial = selectedSerial): Promise<TtsCapabilities> {
+    return parseJson(await agentFetch('/api/capabilities/tts', {}, serial))
+  },
+
+  async getAudioArtifact(artifactId: string, serial = selectedSerial): Promise<Blob> {
+    const response = await agentFetch(`/api/runs/audio/${encodeURIComponent(artifactId)}`, {}, serial)
+    if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
+    return response.blob()
   },
 
   async captureScreenshot(): Promise<Blob> {

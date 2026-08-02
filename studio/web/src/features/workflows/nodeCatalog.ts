@@ -5,6 +5,7 @@ import {
   GitBranch,
   ScanSearch,
   MousePointer2,
+  AudioLines,
   Play,
   RefreshCcw,
   RotateCcw,
@@ -29,7 +30,7 @@ export interface NodeDefinition {
   outcomes?: Array<{ id: string; label: string }>
 }
 
-export type NodeCategory = 'Luồng' | 'Dữ liệu' | 'Hình ảnh' | 'Ứng dụng'
+export type NodeCategory = 'Luồng' | 'Dữ liệu' | 'Hình ảnh' | 'Âm thanh' | 'Ứng dụng'
 
 interface NodeFieldBase {
   key: string
@@ -48,6 +49,7 @@ export type NodeField = NodeFieldBase & (
   | { kind: 'select'; options: Array<{ value: string | number; label: string }> }
   | { kind: 'asset'; assetType: 'IMAGE' | 'UI_SELECTOR' }
   | { kind: 'androidUser' }
+  | { kind: 'ttsEngine' | 'ttsVoice' }
   | { kind: 'typedValue'; typeKey: string }
 )
 
@@ -89,6 +91,17 @@ export const NODE_CATALOG: NodeDefinition[] = [
     { key: 'rightValue', label: 'Giá trị bên phải', kind: 'typedValue', typeKey: 'rightType', visibleWhen: { key: 'rightSource', equals: 'LITERAL' } },
   ], outcomes: [{ id: 'TRUE', label: 'Đúng' }, { id: 'FALSE', label: 'Sai' }] },
   { type: 'LOG', label: 'Ghi log', description: 'Ghi giá trị để kiểm tra run', category: 'Dữ liệu', accent: '#f0c96a', icon: Terminal, defaultConfig: { message: 'Giá trị: {{value}}' }, fields: [{ key: 'message', label: 'Nội dung', hint: 'Có thể chèn biến bằng {{tenBien}}', kind: 'textarea', supportsVariables: true, variableInsertMode: 'append' }] },
+  { type: 'TTS_SPEAK', label: 'TTS Speak', description: 'Tạo file giọng nói và phát âm thanh', category: 'Âm thanh', accent: '#58e0c2', icon: AudioLines, defaultConfig: { text: 'Xin chào từ AIPhone', engine: '', voice: '', languageTag: 'vi-VN', speechRate: 1, pitch: 1, playAudio: false, saveAudio: true, outputVariable: 'ttsResult' }, fields: [
+    { key: 'text', label: 'Nội dung đọc', hint: 'Hỗ trợ text thường và {{tenBien}}', kind: 'textarea', supportsVariables: true, variableInsertMode: 'append' },
+    { key: 'languageTag', label: 'Ngôn ngữ', hint: 'BCP-47, ví dụ vi-VN hoặc en-US', kind: 'text' },
+    { key: 'engine', label: 'TTS engine', kind: 'ttsEngine' },
+    { key: 'voice', label: 'Voice / model ưu tiên', hint: 'Nếu máy khác không có voice này, Agent tự chọn voice tương thích', kind: 'ttsVoice' },
+    { key: 'speechRate', label: 'Tốc độ đọc', kind: 'range', min: 0.25, max: 4, step: 0.05, format: 'NUMBER' },
+    { key: 'pitch', label: 'Cao độ', kind: 'range', min: 0.25, max: 2, step: 0.05, format: 'NUMBER' },
+    { key: 'playAudio', label: 'Phát ngay trên điện thoại', kind: 'checkbox' },
+    { key: 'saveAudio', label: 'Lưu file để nghe / tải từ kết quả', kind: 'checkbox' },
+    { key: 'outputVariable', label: 'Gán kết quả vào biến', hint: 'Biến JSON gồm file, engine, voice, ngôn ngữ và thời lượng', kind: 'text' },
+  ] },
   { type: 'WAIT_IMAGE', label: 'Chờ Asset ảnh', description: 'Đợi ảnh mục tiêu xuất hiện', category: 'Hình ảnh', accent: '#73d7ff', icon: ScanSearch, defaultConfig: { assetId: '', threshold: 0.88, timeoutMs: 30000, pollIntervalMs: 500 }, fields: [imageAssetField, thresholdField, ...timeoutFields], outcomes: [{ id: 'FOUND', label: 'Thấy' }, { id: 'TIMEOUT', label: 'Hết giờ' }] },
   { type: 'IF_IMAGE', label: 'Nếu thấy Asset', description: 'Rẽ nhánh Có / Không', category: 'Hình ảnh', accent: '#73d7ff', icon: ScanSearch, defaultConfig: { assetId: '', threshold: 0.88 }, fields: [imageAssetField, thresholdField], outcomes: [{ id: 'FOUND', label: 'Có' }, { id: 'TIMEOUT', label: 'Không' }] },
   { type: 'TAP_IMAGE', label: 'Bấm Asset ảnh', description: 'Tìm, bấm và xác nhận ảnh biến mất', category: 'Hình ảnh', accent: '#73d7ff', icon: MousePointer2, defaultConfig: { assetId: '', threshold: 0.88, offsetX: 0, offsetY: 0, verifyTap: true, tapAttempts: 2, tapVerificationDelayMs: 700 }, fields: [imageAssetField, thresholdField, { key: 'verifyTap', label: 'Xác nhận ảnh biến mất sau khi bấm', kind: 'checkbox' }, { key: 'offsetX', label: 'Lệch tâm X (px)', kind: 'number' }, { key: 'offsetY', label: 'Lệch tâm Y (px)', kind: 'number' }, { key: 'tapAttempts', label: 'Số lần thử bấm', kind: 'number', min: 1, max: 5 }, { key: 'tapVerificationDelayMs', label: 'Chờ xác nhận (ms)', kind: 'number', min: 100, max: 5000 }] },

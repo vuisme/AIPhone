@@ -57,6 +57,14 @@ test('agentPathFromBridgeUrl allows only fixed device API routes', () => {
     agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/workflows/reward-flow/inventory', 'c421ff5b'),
     '/api/workflows/reward-flow/inventory',
   )
+  assert.equal(
+    agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/capabilities/tts', 'c421ff5b'),
+    '/api/capabilities/tts',
+  )
+  assert.equal(
+    agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/runs/audio/87b6b073-f3a6-4e0b-9c06-794e79f7e3b8', 'c421ff5b'),
+    '/api/runs/audio/87b6b073-f3a6-4e0b-9c06-794e79f7e3b8',
+  )
 })
 
 test('agentPathFromBridgeUrl rejects traversal and non-API targets', () => {

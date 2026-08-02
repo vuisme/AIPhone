@@ -6,6 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.SecureRandom
+import java.util.UUID
 
 class AgentStore(context: Context) {
     private val root = File(context.filesDir, "aiphone").apply { mkdirs() }
@@ -14,6 +15,7 @@ class AgentStore(context: Context) {
     private val accessTokenFile = File(root, "access-token.txt")
     private val assetDirectory = File(root, "assets").apply { mkdirs() }
     private val legacyTemplateDirectory = File(root, "templates").apply { mkdirs() }
+    private val audioDirectory = File(root, "audio").apply { mkdirs() }
     val runDirectory = File(root, "runs").apply { mkdirs() }
 
     init {
@@ -142,6 +144,23 @@ class AgentStore(context: Context) {
         return if (workflowId == legacyOwner) File(legacyTemplateDirectory, "$id.png") else current
     }
 
+    @Synchronized
+    fun createAudioArtifact(): Pair<String, File> {
+        cleanupAudioArtifacts()
+        val id = UUID.randomUUID().toString()
+        return id to File(audioDirectory, "$id.wav")
+    }
+
+    fun audioArtifactFile(id: String): File {
+        require(com.aiphone.agent.workflow.AudioArtifactId.isValid(id)) { "Audio artifact ID is invalid" }
+        return File(audioDirectory, "$id.wav")
+    }
+
+    @Synchronized
+    fun deleteAudioArtifact(id: String) {
+        audioArtifactFile(id).takeIf { it.exists() }?.delete()
+    }
+
     private fun workflowFile(id: String): File {
         validateId(id, "Workflow")
         return File(workflowDirectory, "$id.json")
@@ -224,6 +243,15 @@ class AgentStore(context: Context) {
         }
     }
 
+    private fun cleanupAudioArtifacts() {
+        val files = audioDirectory.listFiles { file -> file.isFile && file.extension == "wav" }.orEmpty()
+            .sortedByDescending { it.lastModified() }
+        val cutoff = System.currentTimeMillis() - AUDIO_RETENTION_MS
+        files.forEachIndexed { index, file ->
+            if (index >= MAX_AUDIO_ARTIFACTS || file.lastModified() < cutoff) file.delete()
+        }
+    }
+
     companion object {
         const val DEFAULT_WORKFLOW_ID = "default-workflow"
         private val ID_PATTERN = Regex("[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}")
@@ -231,6 +259,8 @@ class AgentStore(context: Context) {
         private const val MAX_WORKFLOW_BYTES = 2 * 1024 * 1024
         private const val MAX_ASSET_BYTES = 8 * 1024 * 1024
         private const val MAX_ASSET_UPLOAD_BYTES = 12 * 1024 * 1024
+        private const val MAX_AUDIO_ARTIFACTS = 100
+        private const val AUDIO_RETENTION_MS = 7 * 24 * 60 * 60 * 1000L
         private const val STARTER_WORKFLOW = """{"schemaVersion":2,"id":"default-workflow","name":"Liên Quân reroll","revision":1,"nodes":[{"id":"start","type":"START","position":{"x":80,"y":160},"config":{}},{"id":"success","type":"SUCCESS","position":{"x":420,"y":160},"config":{"message":"Hoàn tất"}}],"edges":[{"id":"start-success","source":"start","target":"success"}],"assets":[],"createdAt":"2026-07-29T00:00:00.000Z","updatedAt":"2026-07-29T00:00:00.000Z"}"""
     }
 }

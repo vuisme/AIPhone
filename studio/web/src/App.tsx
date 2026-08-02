@@ -17,6 +17,7 @@ import {
   type DeviceHealth,
   type RunStatus,
   type StudioUser,
+  type TtsCapabilities,
 } from './api/client'
 import { createStarterWorkflow, normalizeWorkflow, validateWorkflow, type AssetRecord, type ImageAssetRecord, type UiSelectorAssetRecord, type WorkflowDocument, type WorkflowNode } from './contracts/workflow'
 import { AssetLibrary } from './features/assets/AssetLibrary'
@@ -83,6 +84,7 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(() => localStorage.getItem(LOCAL_SELECTED_KEY) || loadLocalWorkflows()[0]?.id || 'default-workflow')
   const [workspace, setWorkspace] = useState<'STUDIO' | 'WORKFLOWS' | 'VARIABLES' | 'ASSETS' | 'ADMIN'>('STUDIO')
   const [device, setDevice] = useState<DeviceHealth>()
+  const [ttsCapabilities, setTtsCapabilities] = useState<TtsCapabilities>()
   const [adbDevices, setAdbDevices] = useState<AdbDevice[]>([])
   const [selectedSerial, setSelectedSerial] = useState(getAgentDeviceSerial)
   const [targetSerials, setTargetSerials] = useState<string[]>(() => getAgentDeviceSerial() ? [getAgentDeviceSerial()] : [])
@@ -183,6 +185,18 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
     void load()
     return () => { cancelled = true }
   }, [connectionRevision, hostIsEmpty, isPaired, selectedSerial, standalone])
+
+  useEffect(() => {
+    if (!device || !isPaired) {
+      setTtsCapabilities(undefined)
+      return
+    }
+    let cancelled = false
+    agentApi.getTtsCapabilities(selectedSerial)
+      .then((capabilities) => { if (!cancelled) setTtsCapabilities(capabilities) })
+      .catch(() => { if (!cancelled) setTtsCapabilities(undefined) })
+    return () => { cancelled = true }
+  }, [device, isPaired, selectedSerial])
 
   useEffect(() => {
     localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(workflows))
@@ -440,7 +454,7 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
       {notice && <button className="notice-bar" onClick={() => setNotice(undefined)}>{notice}<span>Đóng</span></button>}
       <RunLogPanel run={run} expanded={isLogExpanded} onToggle={() => setLogExpanded((value) => !value)} />
 
-      {workspace === 'STUDIO' && <WorkflowCanvas workflow={workflow} activeNodeId={run.currentNodeId} onChange={changeWorkflow} onPlayNode={(node) => void playNode(node)} isNodeTestRunning={!isPaired || (isNodeTest && run.state === 'RUNNING')} />}
+      {workspace === 'STUDIO' && <WorkflowCanvas workflow={workflow} activeNodeId={run.currentNodeId} onChange={changeWorkflow} onPlayNode={(node) => void playNode(node)} isNodeTestRunning={!isPaired || (isNodeTest && run.state === 'RUNNING')} ttsCapabilities={ttsCapabilities} />}
       {workspace === 'WORKFLOWS' && <WorkflowManager workflows={workflows} selectedId={workflow.id} onSelect={(id) => { setSelectedWorkflowId(id); setWorkspace('STUDIO') }} onCreate={(name) => void createWorkflow(name)} onRename={(id, name) => void renameWorkflow(id, name)} onDelete={(id) => void deleteWorkflow(id)} />}
       {workspace === 'VARIABLES' && <WorkflowVariablesManager workflow={workflow} onChange={changeWorkflow} />}
       {workspace === 'ASSETS' && <AssetLibrary workflows={workflows} selectedWorkflowId={workflow.id} onSelectWorkflow={setSelectedWorkflowId} onCapture={(workflowId) => setCaptureTarget({ workflowId })} onReplace={(asset) => setCaptureTarget({ workflowId: asset.workflowId, initialImageAsset: asset })} onRename={(asset, name) => void renameAsset(asset, name)} onDelete={(asset) => void deleteAsset(asset)} getAssetImage={standalone ? projectApi.getAssetImage : agentApi.getAssetImage} />}

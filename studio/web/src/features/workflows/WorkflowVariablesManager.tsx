@@ -28,13 +28,23 @@ export function WorkflowVariablesManager({ workflow, onChange }: WorkflowVariabl
     while (workflow.parameters.some((variable) => variable.name === `variable_${index}`)) index++
     publish([...workflow.parameters, { name: `variable_${index}`, type: 'STRING', defaultValue: '', description: '' }])
   }
-  const runtimeVariables = workflow.nodes.filter((node) => node.type === 'SET_VARIABLE').map((node) => ({
-    nodeId: node.id,
-    name: String(node.config.name ?? ''),
-    type: String(node.config.valueType ?? 'STRING'),
-    value: node.config.value,
-    disabled: node.disabled === true,
-  }))
+  const runtimeVariables = workflow.nodes.flatMap((node) => {
+    if (node.type === 'SET_VARIABLE') return [{
+      nodeId: node.id,
+      name: String(node.config.name ?? ''),
+      type: String(node.config.valueType ?? 'STRING'),
+      value: node.config.value,
+      disabled: node.disabled === true,
+    }]
+    if (node.type === 'TTS_SPEAK' && String(node.config.outputVariable ?? '')) return [{
+      nodeId: node.id,
+      name: String(node.config.outputVariable),
+      type: 'JSON',
+      value: 'Kết quả TTS: file, engine, voice, durationMs',
+      disabled: node.disabled === true,
+    }]
+    return []
+  })
 
   return (
     <section className="workspace-page variables-manager" aria-labelledby="variables-title">
@@ -58,8 +68,8 @@ export function WorkflowVariablesManager({ workflow, onChange }: WorkflowVariabl
       </section>
 
       <section className="variable-section">
-        <div className="variable-section__heading"><Braces size={18} /><div><h3>Biến được tạo khi chạy</h3><p>Danh sách chỉ để tra cứu. Giá trị chỉ tồn tại sau khi node “Đặt biến” tương ứng đã chạy.</p></div><strong>{runtimeVariables.length}</strong></div>
-        {runtimeVariables.length === 0 ? <div className="variable-empty">Chưa có node “Đặt biến” trong workflow.</div> : <div className="runtime-variable-list">
+        <div className="variable-section__heading"><Braces size={18} /><div><h3>Biến được tạo khi chạy</h3><p>Danh sách chỉ để tra cứu. Giá trị xuất hiện sau node tạo output tương ứng đã chạy.</p></div><strong>{runtimeVariables.length}</strong></div>
+        {runtimeVariables.length === 0 ? <div className="variable-empty">Chưa có node tạo biến runtime trong workflow.</div> : <div className="runtime-variable-list">
           {runtimeVariables.map((variable) => <article key={variable.nodeId} className={variable.disabled ? 'disabled' : ''}><code>{`{{${variable.name}}}`}</code><span>{variable.type}</span><strong>{String(variable.value ?? '') || '—'}</strong><small>{variable.nodeId}{variable.disabled ? ' · đang skip' : ''}</small></article>)}
         </div>}
       </section>

@@ -16,13 +16,14 @@ const studioDirectory = path.resolve(moduleDirectory, '..', 'web', 'dist')
 const BRIDGE_ORIGINS = new Set(['http://127.0.0.1:4173', 'http://localhost:4173'])
 const SESSION_COOKIE = 'aiphone.sid'
 const SECURITY_HEADERS = {
-  'Content-Security-Policy': "default-src 'self'; connect-src 'self' http://127.0.0.1:4174 http://localhost:4174; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; connect-src 'self' http://127.0.0.1:4174 http://localhost:4174; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
   'Referrer-Policy': 'no-referrer',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
 }
 const API_PATHS = [
   /^\/api\/device$/,
+  /^\/api\/capabilities\/tts$/,
   /^\/api\/screenshots$/,
   /^\/api\/input\/tap$/,
   /^\/api\/ui-hierarchy$/,
@@ -35,6 +36,7 @@ const API_PATHS = [
   /^\/api\/runs$/,
   /^\/api\/runs\/current$/,
   /^\/api\/runs\/current\/stop$/,
+  /^\/api\/runs\/audio\/[0-9a-f-]{36}$/,
   /^\/api\/node-tests$/,
 ]
 const STUDIO_WORKFLOW_PATH = /^\/studio\/workflows\/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})$/

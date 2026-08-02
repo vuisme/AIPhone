@@ -17,6 +17,7 @@ import {
 } from '@xyflow/react'
 import { Link2Off } from 'lucide-react'
 import type { NodeType, WorkflowDocument, WorkflowNode } from '../../contracts/workflow'
+import type { TtsCapabilities } from '../../api/client'
 import { NODE_CATALOG, nodeDefinition, type NodeCategory } from './nodeCatalog'
 import { NodeInspectorFields } from './NodeInspectorFields'
 import { WorkflowNodeCard, type WorkflowNodeData } from './WorkflowNodeCard'
@@ -28,6 +29,7 @@ interface WorkflowCanvasProps {
   onChange: (workflow: WorkflowDocument) => void
   onPlayNode: (node: WorkflowNode) => void
   isNodeTestRunning?: boolean
+  ttsCapabilities?: TtsCapabilities
 }
 
 const nodeTypes = { workflow: WorkflowNodeCard }
@@ -51,7 +53,7 @@ function toWorkflowNode(node: Node<WorkflowNodeData>): WorkflowNode {
   }
 }
 
-export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, isNodeTestRunning = false }: WorkflowCanvasProps) {
+export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, isNodeTestRunning = false, ttsCapabilities }: WorkflowCanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const lastPublishedWorkflow = useRef<WorkflowDocument | undefined>(undefined)
   const [instance, setInstance] = useState<ReactFlowInstance<Node<WorkflowNodeData>, Edge>>()
@@ -180,10 +182,11 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
     return () => window.removeEventListener('keydown', onKeyDown)
   })
 
-  const categories = useMemo<NodeCategory[]>(() => ['Luồng', 'Dữ liệu', 'Hình ảnh', 'Ứng dụng'], [])
+  const categories = useMemo<NodeCategory[]>(() => ['Luồng', 'Dữ liệu', 'Hình ảnh', 'Âm thanh', 'Ứng dụng'], [])
   const variables = useMemo(() => Array.from(new Set([
     ...workflow.parameters.map((parameter) => parameter.name),
     ...nodes.filter((node) => node.data.nodeType === 'SET_VARIABLE').map((node) => String(node.data.config.name ?? '')).filter(Boolean),
+    ...nodes.filter((node) => node.data.nodeType === 'TTS_SPEAK').map((node) => String(node.data.config.outputVariable ?? '')).filter(Boolean),
   ])).sort(), [nodes, workflow.parameters])
 
   return (
@@ -288,7 +291,7 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
               <strong>{selectedDefinition.label}</strong>
               <code>{selectedNode.id}</code>
             </div>
-            <NodeInspectorFields definition={selectedDefinition} nodeType={selectedNode.data.nodeType} config={selectedNode.data.config} assets={workflow.assets} variables={variables} onChange={updateConfig} />
+            <NodeInspectorFields definition={selectedDefinition} nodeType={selectedNode.data.nodeType} config={selectedNode.data.config} assets={workflow.assets} variables={variables} ttsCapabilities={ttsCapabilities} onChange={updateConfig} />
           </div>
         )}
       </aside>

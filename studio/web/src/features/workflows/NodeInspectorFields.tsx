@@ -1,4 +1,5 @@
 import type { AssetRecord, NodeType, WorkflowValueType } from '../../contracts/workflow'
+import type { TtsCapabilities } from '../../api/client'
 import type { NodeDefinition, NodeField } from './nodeCatalog'
 import { androidUserOptions } from './androidUsers'
 
@@ -8,6 +9,7 @@ interface NodeInspectorFieldsProps {
   config: Record<string, unknown>
   assets: AssetRecord[]
   variables: string[]
+  ttsCapabilities?: TtsCapabilities
   onChange: (key: string, value: unknown) => void
 }
 
@@ -66,6 +68,24 @@ function fieldControl(field: NodeField, props: NodeInspectorFieldsProps) {
       )
     case 'androidUser':
       return <select value={Number(value)} onChange={(event) => props.onChange(field.key, Number(event.target.value))}>{androidUserOptions(props.nodeType).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+    case 'ttsEngine':
+      return <select value={String(value ?? '')} onChange={(event) => props.onChange(field.key, event.target.value)}>
+        <option value="">Android mặc định{props.ttsCapabilities?.defaultEngine ? ` · ${props.ttsCapabilities.defaultEngine}` : ''}</option>
+        {(props.ttsCapabilities?.engines ?? []).map((engine) => <option key={engine.packageName} value={engine.packageName}>{engine.label} · {engine.packageName}</option>)}
+      </select>
+    case 'ttsVoice': {
+      const selectedEngine = String(props.config.engine ?? '') || props.ttsCapabilities?.defaultEngine
+      const languageTag = String(props.config.languageTag ?? '').toLowerCase()
+      const language = languageTag.split('-')[0]
+      const voices = (props.ttsCapabilities?.engines ?? [])
+        .filter((engine) => !selectedEngine || engine.packageName === selectedEngine)
+        .flatMap((engine) => engine.voices)
+        .filter((voice) => !language || voice.languageTag.toLowerCase().split('-')[0] === language)
+      return <select value={String(value ?? '')} onChange={(event) => props.onChange(field.key, event.target.value)}>
+        <option value="">Tự chọn voice tương thích (khuyên dùng)</option>
+        {voices.map((voice) => <option key={voice.name} value={voice.name}>{voice.languageTag} · {voice.name} · {voice.requiresNetwork ? 'Cloud' : 'Local'}</option>)}
+      </select>
+    }
     case 'checkbox':
       return <input type="checkbox" checked={value !== false} onChange={(event) => props.onChange(field.key, event.target.checked)} />
     case 'number':

@@ -1,5 +1,6 @@
-import { ChevronDown, ChevronUp, Terminal } from 'lucide-react'
-import type { RunLogEntry, RunStatus } from '../../api/client'
+import { useEffect, useState } from 'react'
+import { AudioLines, ChevronDown, ChevronUp, Download, Terminal } from 'lucide-react'
+import { agentApi, type RunLogEntry, type RunStatus } from '../../api/client'
 
 interface RunLogPanelProps {
   run: RunStatus
@@ -30,9 +31,38 @@ function formatValue(value: unknown): string {
   catch { return String(value) }
 }
 
+function RunAudioArtifact({ artifactId }: { artifactId: string }) {
+  const [url, setUrl] = useState<string>()
+  const [error, setError] = useState<string>()
+
+  useEffect(() => {
+    let active = true
+    let objectUrl = ''
+    setUrl(undefined)
+    setError(undefined)
+    agentApi.getAudioArtifact(artifactId).then((blob) => {
+      if (!active) return
+      objectUrl = URL.createObjectURL(blob)
+      setUrl(objectUrl)
+    }).catch((reason) => {
+      if (active) setError(reason instanceof Error ? reason.message : 'Không thể tải file TTS')
+    })
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [artifactId])
+
+  return <div className="run-audio-result">
+    <header><AudioLines size={14} /><strong>TTS AUDIO</strong><code>{artifactId.slice(0, 8)}</code></header>
+    {url ? <><audio controls preload="metadata" src={url} /><a href={url} download={`${artifactId}.wav`}><Download size={13} /> Tải WAV</a></> : <small>{error ?? 'Đang tải file âm thanh...'}</small>}
+  </div>
+}
+
 export function RunLogPanel({ run, expanded, onToggle }: RunLogPanelProps) {
   const entries = displayEntries(run)
   const latest = entries.at(-1)
+  const artifactId = typeof run.lastResult?.metadata?.artifactId === 'string' ? run.lastResult.metadata.artifactId : undefined
 
   return (
     <aside className={`run-log-panel ${expanded ? 'expanded' : ''}`}>
@@ -52,6 +82,7 @@ export function RunLogPanel({ run, expanded, onToggle }: RunLogPanelProps) {
                 <div key={name}><code>{name}</code><b>{runValue.type}</b><span>{formatValue(runValue.value)}</span></div>
               ))}
             </div>
+            {artifactId && <RunAudioArtifact artifactId={artifactId} />}
           </section>
           <div className="run-log-panel__body" role="log" aria-live="polite">
             {entries.length === 0 ? (

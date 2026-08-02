@@ -119,4 +119,16 @@ describe('workflow validation', () => {
       'Node set-invalid has invalid variable name not valid',
     ]))
   })
+
+  it('validates the optional TTS output variable', () => {
+    const workflow = createStarterWorkflow()
+    workflow.nodes.push({
+      id: 'speak-result',
+      type: 'TTS_SPEAK',
+      position: { x: 300, y: 120 },
+      config: { text: 'Xin chào', outputVariable: 'audio result' },
+    })
+
+    expect(validateWorkflow(workflow).issues).toContain('Node speak-result has invalid output variable audio result')
+  })
 })

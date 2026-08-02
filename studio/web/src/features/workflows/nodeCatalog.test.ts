@@ -32,3 +32,22 @@ describe('data and logic nodes', () => {
     ])
   })
 })
+
+describe('TTS Speak node', () => {
+  it('supports variable text, capability-selected voices, playback and JSON output', () => {
+    const definition = nodeDefinition('TTS_SPEAK')
+
+    expect(definition.category).toBe('Âm thanh')
+    expect(definition.defaultConfig).toMatchObject({
+      text: 'Xin chào từ AIPhone',
+      languageTag: 'vi-VN',
+      speechRate: 1,
+      pitch: 1,
+      playAudio: false,
+      saveAudio: true,
+      outputVariable: 'ttsResult',
+    })
+    expect(definition.fields.find((field) => field.key === 'text')).toMatchObject({ supportsVariables: true })
+    expect(definition.fields.find((field) => field.key === 'voice')).toMatchObject({ kind: 'ttsVoice' })
+  })
+})

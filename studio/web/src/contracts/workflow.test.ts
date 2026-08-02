@@ -90,13 +90,13 @@ describe('workflow validation', () => {
     const workflow = normalizeWorkflow({
       ...createStarterWorkflow(),
       parameters: [
-        { name: 'rewardCount', type: 'NUMBER', defaultValue: 3 },
+        { name: 'rewardCount', type: 'NUMBER', defaultValue: 3, description: 'Số quà cần nhận' },
         { name: 'accountReady', type: 'BOOLEAN', defaultValue: false },
       ],
     })
 
     expect(workflow.parameters).toEqual([
-      { name: 'rewardCount', type: 'NUMBER', defaultValue: 3 },
+      { name: 'rewardCount', type: 'NUMBER', defaultValue: 3, description: 'Số quà cần nhận' },
       { name: 'accountReady', type: 'BOOLEAN', defaultValue: false },
     ])
   })

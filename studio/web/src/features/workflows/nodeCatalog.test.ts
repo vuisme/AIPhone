@@ -19,6 +19,12 @@ describe('data and logic nodes', () => {
     expect(definition.fields.map((field) => field.key)).toEqual(['name', 'valueType', 'value'])
   })
 
+  it('marks package fields as variable templates', () => {
+    const packageField = nodeDefinition('LAUNCH_APP').fields.find((field) => field.key === 'packageName')
+
+    expect(packageField).toMatchObject({ kind: 'text', supportsVariables: true })
+  })
+
   it('routes generic IF nodes through TRUE and FALSE outcomes', () => {
     expect(nodeDefinition('IF').outcomes).toEqual([
       { id: 'TRUE', label: 'Đúng' },

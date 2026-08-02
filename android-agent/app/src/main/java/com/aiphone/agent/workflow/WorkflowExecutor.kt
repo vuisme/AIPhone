@@ -181,8 +181,8 @@ class WorkflowExecutor(
                 status.updateAndGet { it.copy(variables = context.snapshot(), lastResult = result) }
 
                 when (nodeType.takeUnless { disabled }) {
-                    "SUCCESS" -> return finish(RunState.SUCCESS, node.optJSONObject("config")?.optString("message", "Hoàn tất"))
-                    "FAILURE" -> return finish(RunState.FAILED, node.optJSONObject("config")?.optString("message", "Workflow thất bại"))
+                    "SUCCESS" -> return finish(RunState.SUCCESS, context.interpolate(node.optJSONObject("config")?.optString("message", "Hoàn tất") ?: "Hoàn tất"))
+                    "FAILURE" -> return finish(RunState.FAILED, context.interpolate(node.optJSONObject("config")?.optString("message", "Workflow thất bại") ?: "Workflow thất bại"))
                 }
 
                 val nextEdge = selectNextRoute(edges, nodeId, result?.outcome, disabled)
@@ -211,7 +211,7 @@ class WorkflowExecutor(
             if (cancellation.get()) return finish(RunState.STOPPED, "Đã dừng chạy thử node")
             appendLog("INFO", result.description() ?: "Node chạy thành công", requestedNodeId)
             when (node.getString("type")) {
-                "FAILURE" -> finish(RunState.FAILED, node.optJSONObject("config")?.optString("message", "Node báo thất bại"))
+                "FAILURE" -> finish(RunState.FAILED, context.interpolate(node.optJSONObject("config")?.optString("message", "Node báo thất bại") ?: "Node báo thất bại"))
                 else -> finish(RunState.SUCCESS, result.description() ?: "Node chạy thành công")
             }
         } catch (error: Throwable) {
@@ -251,11 +251,11 @@ class WorkflowExecutor(
                     "Swipe failed",
                 ); NodeResult()
             }
-            "CREATE_CLONE" -> { executeCommand(SafeCommands.createClone(packageName(config), userId(config))); NodeResult() }
-            "DELETE_CLONE" -> { executeCommand(SafeCommands.deleteClone(packageName(config), userId(config))); NodeResult() }
-            "CLEAR_CLONE" -> { executeCommand(SafeCommands.clearClone(packageName(config), userId(config))); NodeResult() }
-            "FORCE_STOP_APP" -> { executeCommand(SafeCommands.forceStop(packageName(config), userId(config))); NodeResult() }
-            "LAUNCH_APP" -> launchApp(config)
+            "CREATE_CLONE" -> { executeCommand(SafeCommands.createClone(packageName(config, context), userId(config))); NodeResult() }
+            "DELETE_CLONE" -> { executeCommand(SafeCommands.deleteClone(packageName(config, context), userId(config))); NodeResult() }
+            "CLEAR_CLONE" -> { executeCommand(SafeCommands.clearClone(packageName(config, context), userId(config))); NodeResult() }
+            "FORCE_STOP_APP" -> { executeCommand(SafeCommands.forceStop(packageName(config, context), userId(config))); NodeResult() }
+            "LAUNCH_APP" -> launchApp(config, context)
             "CAPTURE" -> {
                 val output = File(store.runDirectory, "$runId-${node.getString("id")}.png")
                 output.writeBytes(RootGateway.captureScreen())
@@ -269,7 +269,9 @@ class WorkflowExecutor(
     private fun setVariable(config: JSONObject, context: RunContext): NodeResult {
         val name = config.getString("name")
         val type = WorkflowValueType.valueOf(config.optString("valueType", WorkflowValueType.STRING.name))
-        val value = RunValue.fromLiteral(type, config.opt("value"))
+        val rawValue = config.opt("value")
+        val resolvedValue = if (type == WorkflowValueType.STRING && rawValue != null && rawValue != JSONObject.NULL) context.interpolate(rawValue.toString()) else rawValue
+        val value = RunValue.fromLiteral(type, resolvedValue)
         context.set(name, value)
         return NodeResult(value = value, metadata = mapOf("name" to name))
     }
@@ -370,8 +372,8 @@ class WorkflowExecutor(
         return null
     }
 
-    private fun launchApp(config: JSONObject): NodeResult {
-        val packageName = packageName(config)
+    private fun launchApp(config: JSONObject, context: RunContext): NodeResult {
+        val packageName = packageName(config, context)
         val userId = userId(config)
         if (userId == 0 && !RootGateway.isRootGranted()) {
             val result = launchMainApp(packageName)
@@ -390,7 +392,7 @@ class WorkflowExecutor(
         return NodeResult()
     }
 
-    private fun packageName(config: JSONObject) = config.optString("packageName", SafeCommands.TARGET_PACKAGE)
+    private fun packageName(config: JSONObject, context: RunContext) = context.interpolate(config.optString("packageName", SafeCommands.TARGET_PACKAGE)).trim()
     private fun userId(config: JSONObject) = config.optInt("userId", SafeCommands.CLONE_USER_ID)
 
     private fun sleepCancellable(durationMs: Long) {

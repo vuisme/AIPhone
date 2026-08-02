@@ -2,6 +2,7 @@ package com.aiphone.agent.workflow
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class RunContextTest {
@@ -22,5 +23,22 @@ class RunContextTest {
         context.set("rewardCount", RunValue(WorkflowValueType.NUMBER, 3.0))
 
         assertEquals("Đã nhận 3 phần quà", context.interpolate("Đã nhận {{rewardCount}} phần quà"))
+    }
+
+    @Test
+    fun `resolves package config from a global variable`() {
+        val context = RunContext()
+        context.set("gamePackage", RunValue(WorkflowValueType.STRING, "com.garena.game.kgvn"))
+
+        assertEquals("com.garena.game.kgvn", context.interpolate("{{ gamePackage }}"))
+    }
+
+    @Test
+    fun `fails clearly when a template references an unknown variable`() {
+        val error = assertThrows(IllegalStateException::class.java) {
+            RunContext().interpolate("{{missingPackage}}")
+        }
+
+        assertEquals("Variable missingPackage is not defined", error.message)
     }
 }

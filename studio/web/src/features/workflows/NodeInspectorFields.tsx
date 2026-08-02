@@ -11,7 +11,33 @@ interface NodeInspectorFieldsProps {
   onChange: (key: string, value: unknown) => void
 }
 
-function typedValue(field: Extract<NodeField, { kind: 'typedValue' }>, config: Record<string, unknown>, onChange: NodeInspectorFieldsProps['onChange']) {
+function insertVariable(current: string, name: string, mode: 'replace' | 'append' = 'append'): string {
+  const token = `{{${name}}}`
+  if (mode === 'replace') return token
+  if (!current) return token
+  return `${current}${/\s$/.test(current) ? '' : ' '}${token}`
+}
+
+function TemplateControl({ value, variables, multiline = false, mode, onChange }: {
+  value: string
+  variables: string[]
+  multiline?: boolean
+  mode?: 'replace' | 'append'
+  onChange: (value: string) => void
+}) {
+  return <div className="variable-template-control">
+    {multiline
+      ? <textarea rows={4} value={value} onChange={(event) => onChange(event.target.value)} />
+      : <input value={value} onChange={(event) => onChange(event.target.value)} />}
+    <select aria-label="Chèn biến" value="" disabled={variables.length === 0} onChange={(event) => { if (event.target.value) onChange(insertVariable(value, event.target.value, mode)) }}>
+      <option value="">{variables.length ? 'Chèn biến...' : 'Chưa khai báo biến'}</option>
+      {variables.map((name) => <option key={name} value={name}>{`{{${name}}}`}</option>)}
+    </select>
+  </div>
+}
+
+function typedValue(field: Extract<NodeField, { kind: 'typedValue' }>, props: NodeInspectorFieldsProps) {
+  const { config, onChange } = props
   const type = String(config[field.typeKey] ?? 'STRING') as WorkflowValueType
   const value = config[field.key]
   if (type === 'BOOLEAN') {
@@ -24,6 +50,7 @@ function typedValue(field: Extract<NodeField, { kind: 'typedValue' }>, config: R
     const display = typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2)
     return <textarea rows={5} value={display} onChange={(event) => onChange(field.key, event.target.value)} spellCheck={false} />
   }
+  if (field.supportsVariables) return <TemplateControl value={String(value ?? '')} variables={props.variables} mode={field.variableInsertMode} onChange={(next) => onChange(field.key, next)} />
   return <input value={String(value ?? '')} onChange={(event) => onChange(field.key, event.target.value)} />
 }
 
@@ -50,11 +77,15 @@ function fieldControl(field: NodeField, props: NodeInspectorFieldsProps) {
     case 'variable':
       return <select value={String(value ?? '')} onChange={(event) => props.onChange(field.key, event.target.value)}><option value="">Chọn biến...</option>{props.variables.map((name) => <option key={name} value={name}>{name}</option>)}</select>
     case 'textarea':
-      return <textarea rows={4} value={String(value ?? '')} onChange={(event) => props.onChange(field.key, event.target.value)} />
+      return field.supportsVariables
+        ? <TemplateControl multiline value={String(value ?? '')} variables={props.variables} mode={field.variableInsertMode} onChange={(next) => props.onChange(field.key, next)} />
+        : <textarea rows={4} value={String(value ?? '')} onChange={(event) => props.onChange(field.key, event.target.value)} />
     case 'typedValue':
-      return typedValue(field, props.config, props.onChange)
+      return typedValue(field, props)
     case 'text':
-      return <input value={String(value ?? '')} onChange={(event) => props.onChange(field.key, event.target.value)} />
+      return field.supportsVariables
+        ? <TemplateControl value={String(value ?? '')} variables={props.variables} mode={field.variableInsertMode} onChange={(next) => props.onChange(field.key, next)} />
+        : <input value={String(value ?? '')} onChange={(event) => props.onChange(field.key, event.target.value)} />
   }
 }
 

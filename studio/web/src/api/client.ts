@@ -107,6 +107,7 @@ export interface AuthSession {
 export interface AdbDevice {
   serial: string
   state: 'device' | 'offline' | 'unauthorized' | string
+  label?: string | null
   model: string | null
   product: string | null
   transportId: string | null

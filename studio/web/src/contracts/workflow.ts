@@ -52,6 +52,7 @@ export interface WorkflowParameter {
   name: string
   type: WorkflowValueType
   defaultValue: unknown
+  description?: string
 }
 
 interface AssetBase {
@@ -212,7 +213,12 @@ function migrateParameter(value: unknown): WorkflowParameter | undefined {
     ? record.type as WorkflowValueType
     : 'STRING'
   if (!VARIABLE_PATTERN.test(name)) return undefined
-  return { name, type, defaultValue: normalizeDefaultValue(type, record.defaultValue) }
+  return {
+    name,
+    type,
+    defaultValue: normalizeDefaultValue(type, record.defaultValue),
+    description: typeof record.description === 'string' && record.description.trim() ? record.description : undefined,
+  }
 }
 
 export function normalizeWorkflow(value: unknown): WorkflowDocument {

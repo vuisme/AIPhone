@@ -36,6 +36,8 @@ interface NodeFieldBase {
   label: string
   hint?: string
   visibleWhen?: { key: string; equals: unknown }
+  supportsVariables?: boolean
+  variableInsertMode?: 'replace' | 'append'
 }
 
 export type NodeField = NodeFieldBase & (
@@ -57,7 +59,7 @@ const timeoutFields: NodeField[] = [
 const imageAssetField: NodeField = { key: 'assetId', label: 'Asset', kind: 'asset', assetType: 'IMAGE' }
 const thresholdField: NodeField = { key: 'threshold', label: 'Độ tin cậy', kind: 'range', min: 0.5, max: 1, step: 0.01, format: 'PERCENT' }
 const appFields: NodeField[] = [
-  { key: 'packageName', label: 'Package', kind: 'text' },
+  { key: 'packageName', label: 'Package', hint: 'Nhập package hoặc chọn biến {{tenBien}}', kind: 'text', supportsVariables: true, variableInsertMode: 'replace' },
   { key: 'userId', label: 'Chạy trên', kind: 'androidUser' },
 ]
 
@@ -65,12 +67,12 @@ export const NODE_CATALOG: NodeDefinition[] = [
   { type: 'START', label: 'Bắt đầu', description: 'Điểm vào duy nhất', category: 'Luồng', accent: '#dcf763', icon: Play, defaultConfig: {}, fields: noFields },
   { type: 'DELAY', label: 'Chờ', description: 'Dừng theo mili giây', category: 'Luồng', accent: '#ffd38a', icon: Clock3, defaultConfig: { durationMs: 1000 }, fields: [{ key: 'durationMs', label: 'Thời gian chờ (ms)', kind: 'number', min: 0 }] },
   { type: 'LOOP', label: 'Lặp lại', description: 'Quay về một nhánh', category: 'Luồng', accent: '#ffd38a', icon: RefreshCcw, defaultConfig: { maxIterations: 0 }, fields: [{ key: 'maxIterations', label: 'Số vòng tối đa', hint: '0 = không giới hạn', kind: 'number', min: 0 }] },
-  { type: 'SUCCESS', label: 'Thành công', description: 'Dừng và lưu kết quả', category: 'Luồng', accent: '#8ee3b4', icon: CheckCircle2, defaultConfig: { message: 'Đã hoàn tất' }, fields: [{ key: 'message', label: 'Thông báo', kind: 'text' }] },
-  { type: 'FAILURE', label: 'Thất bại', description: 'Dừng với lỗi', category: 'Luồng', accent: '#ff9b86', icon: XCircle, defaultConfig: { message: 'Workflow thất bại' }, fields: [{ key: 'message', label: 'Thông báo', kind: 'text' }] },
+  { type: 'SUCCESS', label: 'Thành công', description: 'Dừng và lưu kết quả', category: 'Luồng', accent: '#8ee3b4', icon: CheckCircle2, defaultConfig: { message: 'Đã hoàn tất' }, fields: [{ key: 'message', label: 'Thông báo', kind: 'text', supportsVariables: true, variableInsertMode: 'append' }] },
+  { type: 'FAILURE', label: 'Thất bại', description: 'Dừng với lỗi', category: 'Luồng', accent: '#ff9b86', icon: XCircle, defaultConfig: { message: 'Workflow thất bại' }, fields: [{ key: 'message', label: 'Thông báo', kind: 'text', supportsVariables: true, variableInsertMode: 'append' }] },
   { type: 'SET_VARIABLE', label: 'Đặt biến', description: 'Lưu dữ liệu dùng trong run', category: 'Dữ liệu', accent: '#f0c96a', icon: Variable, defaultConfig: { name: 'value', valueType: 'STRING', value: '' }, fields: [
     { key: 'name', label: 'Tên biến', hint: 'Chữ, số và dấu gạch dưới; không bắt đầu bằng số', kind: 'text' },
     { key: 'valueType', label: 'Kiểu dữ liệu', kind: 'select', options: [{ value: 'STRING', label: 'Text' }, { value: 'NUMBER', label: 'Số' }, { value: 'BOOLEAN', label: 'Đúng / Sai' }, { value: 'JSON', label: 'JSON' }] },
-    { key: 'value', label: 'Giá trị', kind: 'typedValue', typeKey: 'valueType' },
+    { key: 'value', label: 'Giá trị', kind: 'typedValue', typeKey: 'valueType', supportsVariables: true, variableInsertMode: 'append' },
   ] },
   { type: 'IF', label: 'Nếu / thì', description: 'So sánh biến và rẽ nhánh', category: 'Dữ liệu', accent: '#f0c96a', icon: GitBranch, defaultConfig: { leftVariable: '', operator: 'EQUALS', rightSource: 'LITERAL', rightType: 'STRING', rightValue: '' }, fields: [
     { key: 'leftVariable', label: 'Biến bên trái', kind: 'variable' },
@@ -86,7 +88,7 @@ export const NODE_CATALOG: NodeDefinition[] = [
     { key: 'rightType', label: 'Kiểu giá trị', kind: 'select', options: [{ value: 'STRING', label: 'Text' }, { value: 'NUMBER', label: 'Số' }, { value: 'BOOLEAN', label: 'Đúng / Sai' }, { value: 'JSON', label: 'JSON' }], visibleWhen: { key: 'rightSource', equals: 'LITERAL' } },
     { key: 'rightValue', label: 'Giá trị bên phải', kind: 'typedValue', typeKey: 'rightType', visibleWhen: { key: 'rightSource', equals: 'LITERAL' } },
   ], outcomes: [{ id: 'TRUE', label: 'Đúng' }, { id: 'FALSE', label: 'Sai' }] },
-  { type: 'LOG', label: 'Ghi log', description: 'Ghi giá trị để kiểm tra run', category: 'Dữ liệu', accent: '#f0c96a', icon: Terminal, defaultConfig: { message: 'Giá trị: {{value}}' }, fields: [{ key: 'message', label: 'Nội dung', hint: 'Có thể chèn biến bằng {{tenBien}}', kind: 'textarea' }] },
+  { type: 'LOG', label: 'Ghi log', description: 'Ghi giá trị để kiểm tra run', category: 'Dữ liệu', accent: '#f0c96a', icon: Terminal, defaultConfig: { message: 'Giá trị: {{value}}' }, fields: [{ key: 'message', label: 'Nội dung', hint: 'Có thể chèn biến bằng {{tenBien}}', kind: 'textarea', supportsVariables: true, variableInsertMode: 'append' }] },
   { type: 'WAIT_IMAGE', label: 'Chờ Asset ảnh', description: 'Đợi ảnh mục tiêu xuất hiện', category: 'Hình ảnh', accent: '#73d7ff', icon: ScanSearch, defaultConfig: { assetId: '', threshold: 0.88, timeoutMs: 30000, pollIntervalMs: 500 }, fields: [imageAssetField, thresholdField, ...timeoutFields], outcomes: [{ id: 'FOUND', label: 'Thấy' }, { id: 'TIMEOUT', label: 'Hết giờ' }] },
   { type: 'IF_IMAGE', label: 'Nếu thấy Asset', description: 'Rẽ nhánh Có / Không', category: 'Hình ảnh', accent: '#73d7ff', icon: ScanSearch, defaultConfig: { assetId: '', threshold: 0.88 }, fields: [imageAssetField, thresholdField], outcomes: [{ id: 'FOUND', label: 'Có' }, { id: 'TIMEOUT', label: 'Không' }] },
   { type: 'TAP_IMAGE', label: 'Bấm Asset ảnh', description: 'Tìm, bấm và xác nhận ảnh biến mất', category: 'Hình ảnh', accent: '#73d7ff', icon: MousePointer2, defaultConfig: { assetId: '', threshold: 0.88, offsetX: 0, offsetY: 0, verifyTap: true, tapAttempts: 2, tapVerificationDelayMs: 700 }, fields: [imageAssetField, thresholdField, { key: 'verifyTap', label: 'Xác nhận ảnh biến mất sau khi bấm', kind: 'checkbox' }, { key: 'offsetX', label: 'Lệch tâm X (px)', kind: 'number' }, { key: 'offsetY', label: 'Lệch tâm Y (px)', kind: 'number' }, { key: 'tapAttempts', label: 'Số lần thử bấm', kind: 'number', min: 1, max: 5 }, { key: 'tapVerificationDelayMs', label: 'Chờ xác nhận (ms)', kind: 'number', min: 100, max: 5000 }] },

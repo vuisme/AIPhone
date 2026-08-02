@@ -16,10 +16,9 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import { Link2Off } from 'lucide-react'
-import type { NodeType, WorkflowDocument, WorkflowNode, WorkflowParameter } from '../../contracts/workflow'
+import type { NodeType, WorkflowDocument, WorkflowNode } from '../../contracts/workflow'
 import { NODE_CATALOG, nodeDefinition, type NodeCategory } from './nodeCatalog'
 import { NodeInspectorFields } from './NodeInspectorFields'
-import { WorkflowParametersEditor } from './WorkflowParametersEditor'
 import { WorkflowNodeCard, type WorkflowNodeData } from './WorkflowNodeCard'
 import { removeEdgeById, toggleNodeDisabled } from './workflowGraph'
 
@@ -73,7 +72,7 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
     setSelectedEdgeId((current) => workflow.edges.some((edge) => edge.id === current) ? current : undefined)
   }, [activeNodeId, workflow])
 
-  const publish = (nextNodes: Node<WorkflowNodeData>[], nextEdges: Edge[], parameters: WorkflowParameter[] = workflow.parameters) => {
+  const publish = (nextNodes: Node<WorkflowNodeData>[], nextEdges: Edge[]) => {
     setNodes(nextNodes)
     setEdges(nextEdges)
     const nextWorkflow: WorkflowDocument = {
@@ -81,7 +80,6 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
       revision: workflow.revision + 1,
       nodes: nextNodes.map(toWorkflowNode),
       edges: nextEdges.map((edge) => ({ id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle ?? undefined })),
-      parameters,
       updatedAt: new Date().toISOString(),
     }
     lastPublishedWorkflow.current = nextWorkflow
@@ -293,7 +291,6 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
             <NodeInspectorFields definition={selectedDefinition} nodeType={selectedNode.data.nodeType} config={selectedNode.data.config} assets={workflow.assets} variables={variables} onChange={updateConfig} />
           </div>
         )}
-        <WorkflowParametersEditor parameters={workflow.parameters} onChange={(parameters) => publish(nodes, edges, parameters)} />
       </aside>
     </div>
   )

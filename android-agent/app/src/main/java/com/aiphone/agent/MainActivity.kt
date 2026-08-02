@@ -18,6 +18,7 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
@@ -27,9 +28,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import com.aiphone.agent.accessibility.AccessibilityController
 import com.aiphone.agent.callback.CallbackEndpoint
 import com.aiphone.agent.callback.CallbackState
@@ -91,22 +89,23 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         preferences = AgentPreferences(this)
         store = AgentStore(this)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.setDecorFitsSystemWindows(false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
         rootView = buildAppShell()
-        ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
-            view.setPadding(0, systemBars.top, 0, maxOf(systemBars.bottom, keyboard.bottom))
+        rootView.setOnApplyWindowInsetsListener { view, insets ->
+            val systemBars = insets.getInsets(WindowInsets.Type.systemBars())
+            val keyboard = insets.getInsets(WindowInsets.Type.ime())
+            view.setPadding(
+                systemBars.left,
+                systemBars.top,
+                systemBars.right,
+                maxOf(systemBars.bottom, keyboard.bottom),
+            )
             insets
         }
-        WindowCompat.getInsetsController(window, rootView).apply {
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
-        }
         setContentView(rootView)
-        ViewCompat.requestApplyInsets(rootView)
+        rootView.requestApplyInsets()
         showTab(AppTab.DASHBOARD)
         requestNotificationPermission()
         if (preferences.serviceEnabled) startAgentService()

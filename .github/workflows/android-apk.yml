@@ -77,6 +77,9 @@ jobs:
       - name: Verify Android runtime compatibility
         run: node android-agent/scripts/verify-runtime-compat.mjs
 
+      - name: Verify Android window insets compatibility
+        run: node android-agent/scripts/verify-window-insets-compat.mjs
+
       - name: Bundle Studio into Android assets
         run: |
           mkdir -p android-agent/app/src/main/assets/studio

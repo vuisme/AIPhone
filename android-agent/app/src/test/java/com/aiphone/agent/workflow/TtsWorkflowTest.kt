@@ -1,6 +1,5 @@
 package com.aiphone.agent.workflow
 
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -23,10 +22,7 @@ class TtsWorkflowTest {
             set("playerName", RunValue(WorkflowValueType.STRING, "Jolene"))
         }
 
-        val options = TtsSpeakOptions.fromConfig(
-            JSONObject().put("text", "Xin chào {{playerName}}"),
-            context,
-        )
+        val options = TtsSpeakOptions.fromValues("Xin chào {{playerName}}", context)
 
         assertEquals("Xin chào Jolene", options.text)
         assertEquals("vi-VN", options.languageTag)
@@ -38,10 +34,7 @@ class TtsWorkflowTest {
     @Test
     fun `rejects an invalid output variable before synthesis`() {
         val error = assertThrows(IllegalArgumentException::class.java) {
-            TtsSpeakOptions.fromConfig(
-                JSONObject().put("text", "Hello").put("outputVariable", "audio result"),
-                RunContext(),
-            )
+            TtsSpeakOptions.fromValues("Hello", RunContext(), outputVariable = "audio result")
         }
 
         assertEquals("Invalid variable name audio result", error.message)
@@ -78,12 +71,12 @@ class TtsWorkflowTest {
     @Test
     fun `assigns structured output to a new runtime variable`() {
         val context = RunContext()
-        val result = JSONObject().put("artifactId", "audio-1").put("played", true)
+        val result = mapOf("artifactId" to "audio-1", "played" to true)
 
         TtsResultBinder.assign(context, "speechResult", result)
 
         assertEquals(WorkflowValueType.JSON, context.require("speechResult").type)
-        assertEquals("audio-1", (context.require("speechResult").value as JSONObject).getString("artifactId"))
+        assertEquals("audio-1", (context.require("speechResult").value as Map<*, *>)["artifactId"])
     }
 
     @Test

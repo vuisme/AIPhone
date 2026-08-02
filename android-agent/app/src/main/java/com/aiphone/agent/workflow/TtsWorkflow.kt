@@ -15,26 +15,50 @@ data class TtsSpeakOptions(
     val outputVariable: String?,
 ) {
     companion object {
-        fun fromConfig(config: JSONObject, context: RunContext): TtsSpeakOptions {
-            val text = context.interpolate(config.optString("text"))
+        fun fromConfig(config: JSONObject, context: RunContext): TtsSpeakOptions = fromValues(
+            textTemplate = config.optString("text"),
+            context = context,
+            enginePackage = config.optString("engine"),
+            preferredVoice = config.optString("voice"),
+            languageTag = config.optString("languageTag", "vi-VN"),
+            speechRate = config.optDouble("speechRate", 1.0).toFloat(),
+            pitch = config.optDouble("pitch", 1.0).toFloat(),
+            playAudio = config.optBoolean("playAudio", false),
+            saveAudio = config.optBoolean("saveAudio", true),
+            outputVariable = config.optString("outputVariable"),
+        )
+
+        fun fromValues(
+            textTemplate: String,
+            context: RunContext,
+            enginePackage: String? = null,
+            preferredVoice: String? = null,
+            languageTag: String = "vi-VN",
+            speechRate: Float = 1f,
+            pitch: Float = 1f,
+            playAudio: Boolean = false,
+            saveAudio: Boolean = true,
+            outputVariable: String? = null,
+        ): TtsSpeakOptions {
+            val text = context.interpolate(textTemplate)
             require(text.isNotBlank()) { "TTS text is required" }
             require(text.length <= MAX_TEXT_LENGTH) { "TTS text cannot exceed $MAX_TEXT_LENGTH characters" }
-            val languageTag = config.optString("languageTag", "vi-VN").trim().ifBlank { "vi-VN" }
-            require(LANGUAGE_TAG.matches(languageTag)) { "Invalid TTS language tag $languageTag" }
-            val outputVariable = config.optString("outputVariable").trim().ifBlank { null }
-            if (outputVariable != null) require(RunContext.isValidVariableName(outputVariable)) {
-                "Invalid variable name $outputVariable"
+            val resolvedLanguageTag = languageTag.trim().ifBlank { "vi-VN" }
+            require(LANGUAGE_TAG.matches(resolvedLanguageTag)) { "Invalid TTS language tag $resolvedLanguageTag" }
+            val resolvedOutputVariable = outputVariable?.trim()?.ifBlank { null }
+            if (resolvedOutputVariable != null) require(RunContext.isValidVariableName(resolvedOutputVariable)) {
+                "Invalid variable name $resolvedOutputVariable"
             }
             return TtsSpeakOptions(
                 text = text,
-                enginePackage = config.optString("engine").trim().ifBlank { null },
-                preferredVoice = config.optString("voice").trim().ifBlank { null },
-                languageTag = languageTag,
-                speechRate = config.optDouble("speechRate", 1.0).toFloat().coerceIn(0.25f, 4f),
-                pitch = config.optDouble("pitch", 1.0).toFloat().coerceIn(0.25f, 2f),
-                playAudio = config.optBoolean("playAudio", false),
-                saveAudio = config.optBoolean("saveAudio", true),
-                outputVariable = outputVariable,
+                enginePackage = enginePackage?.trim()?.ifBlank { null },
+                preferredVoice = preferredVoice?.trim()?.ifBlank { null },
+                languageTag = resolvedLanguageTag,
+                speechRate = speechRate.coerceIn(0.25f, 4f),
+                pitch = pitch.coerceIn(0.25f, 2f),
+                playAudio = playAudio,
+                saveAudio = saveAudio,
+                outputVariable = resolvedOutputVariable,
             )
         }
 
@@ -115,7 +139,7 @@ interface TtsGateway {
 }
 
 object TtsResultBinder {
-    fun assign(context: RunContext, outputVariable: String?, result: JSONObject) {
+    fun assign(context: RunContext, outputVariable: String?, result: Any) {
         if (outputVariable != null) context.set(outputVariable, RunValue(WorkflowValueType.JSON, result))
     }
 }

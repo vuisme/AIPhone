@@ -24,13 +24,19 @@ class ScreenOcrResultTest {
             processingTimeMs = 142,
         )
 
-        val json = result.toJson()
+        val contract = result.toMap()
+        val image = contract.getValue("image") as Map<*, *>
+        val blocks = contract.getValue("blocks") as List<*>
+        val firstBlock = blocks.first() as Map<*, *>
+        val bounds = firstBlock["bounds"] as Map<*, *>
+        val lines = firstBlock["lines"] as List<*>
+        val secondLine = lines[1] as Map<*, *>
 
-        assertEquals("GOOGLE_PLAY_SERVICES_MLKIT_TEXT_RECOGNITION_V2", json.getString("engine"))
-        assertEquals("Minh Nguyen\nBai viet rat hay", json.getString("fullText"))
-        assertEquals(1080, json.getJSONObject("image").getInt("width"))
-        assertEquals(320, json.getJSONArray("blocks").getJSONObject(0).getJSONObject("bounds").getInt("top"))
-        assertEquals("Bai viet rat hay", json.getJSONArray("blocks").getJSONObject(0).getJSONArray("lines").getJSONObject(1).getString("text"))
-        assertTrue(json.getLong("processingTimeMs") > 0)
+        assertEquals("GOOGLE_PLAY_SERVICES_MLKIT_TEXT_RECOGNITION_V2", contract["engine"])
+        assertEquals("Minh Nguyen\nBai viet rat hay", contract["fullText"])
+        assertEquals(1080, image["width"])
+        assertEquals(320, bounds["top"])
+        assertEquals("Bai viet rat hay", secondLine["text"])
+        assertTrue(contract.getValue("processingTimeMs") as Long > 0)
     }
 }

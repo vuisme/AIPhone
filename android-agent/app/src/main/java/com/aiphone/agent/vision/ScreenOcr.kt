@@ -1,6 +1,5 @@
 package com.aiphone.agent.vision
 
-import org.json.JSONArray
 import org.json.JSONObject
 
 data class OcrBounds(
@@ -9,20 +8,22 @@ data class OcrBounds(
     val right: Int,
     val bottom: Int,
 ) {
-    fun toJson() = JSONObject()
-        .put("left", left)
-        .put("top", top)
-        .put("right", right)
-        .put("bottom", bottom)
+    fun toMap(): Map<String, Int> = mapOf(
+        "left" to left,
+        "top" to top,
+        "right" to right,
+        "bottom" to bottom,
+    )
 }
 
 data class OcrTextLine(
     val text: String,
     val bounds: OcrBounds?,
 ) {
-    fun toJson() = JSONObject()
-        .put("text", text)
-        .put("bounds", bounds?.toJson() ?: JSONObject.NULL)
+    fun toMap(): Map<String, Any?> = mapOf(
+        "text" to text,
+        "bounds" to bounds?.toMap(),
+    )
 }
 
 data class OcrTextBlock(
@@ -30,10 +31,11 @@ data class OcrTextBlock(
     val bounds: OcrBounds?,
     val lines: List<OcrTextLine>,
 ) {
-    fun toJson() = JSONObject()
-        .put("text", text)
-        .put("bounds", bounds?.toJson() ?: JSONObject.NULL)
-        .put("lines", JSONArray(lines.map(OcrTextLine::toJson)))
+    fun toMap(): Map<String, Any?> = mapOf(
+        "text" to text,
+        "bounds" to bounds?.toMap(),
+        "lines" to lines.map(OcrTextLine::toMap),
+    )
 }
 
 data class ScreenOcrResult(
@@ -43,13 +45,16 @@ data class ScreenOcrResult(
     val blocks: List<OcrTextBlock>,
     val processingTimeMs: Long,
 ) {
-    fun toJson() = JSONObject()
-        .put("engine", ENGINE)
-        .put("script", "LATIN")
-        .put("fullText", fullText)
-        .put("image", JSONObject().put("width", imageWidth).put("height", imageHeight))
-        .put("blocks", JSONArray(blocks.map(OcrTextBlock::toJson)))
-        .put("processingTimeMs", processingTimeMs)
+    fun toMap(): Map<String, Any> = mapOf(
+        "engine" to ENGINE,
+        "script" to "LATIN",
+        "fullText" to fullText,
+        "image" to mapOf("width" to imageWidth, "height" to imageHeight),
+        "blocks" to blocks.map(OcrTextBlock::toMap),
+        "processingTimeMs" to processingTimeMs,
+    )
+
+    fun toJson() = JSONObject(toMap())
 
     companion object {
         const val ENGINE = "GOOGLE_PLAY_SERVICES_MLKIT_TEXT_RECOGNITION_V2"

@@ -17,8 +17,20 @@ class AgentPreferences(context: Context) {
         set(value) { values.edit().putString("updateChannel", value.name).apply() }
 
     var callbackEnabled: Boolean
-        get() = values.getBoolean("callbackEnabled", false)
-        set(value) { values.edit().putBoolean("callbackEnabled", value).apply() }
+        get() = connectionMode == ConnectionMode.CLOUD
+        set(value) { connectionMode = if (value) ConnectionMode.CLOUD else ConnectionMode.ADB }
+
+    var connectionMode: ConnectionMode
+        get() = ConnectionMode.fromStorage(
+            values.getString("connectionMode", null),
+            values.getBoolean("callbackEnabled", false),
+        )
+        set(value) {
+            values.edit()
+                .putString("connectionMode", value.name)
+                .putBoolean("callbackEnabled", value == ConnectionMode.CLOUD)
+                .apply()
+        }
 
     var callbackUrl: String
         get() = values.getString("callbackUrl", "").orEmpty()

@@ -13,31 +13,21 @@ import com.aiphone.agent.storage.AgentStore
 import com.aiphone.agent.workflow.WorkflowExecutor
 import com.aiphone.agent.accessibility.AccessibilityController
 import com.aiphone.agent.root.CommandResult
+import com.aiphone.agent.callback.CallbackStatus
 import com.aiphone.agent.callback.CloudCallbackClient
 
 class AutomationService : Service() {
     private var server: AgentHttpServer? = null
     private var callbackClient: CloudCallbackClient? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private lateinit var preferences: AgentPreferences
 
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        preferences = AgentPreferences(this)
         createNotificationChannel()
-        val openIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("AIPhone Agent đang chạy")
-            .setContentText("Studio cục bộ tại cổng 8765")
-            .setOngoing(true)
-            .setContentIntent(openIntent)
-            .build()
-        startForeground(NOTIFICATION_ID, notification)
+        startForeground(NOTIFICATION_ID, buildNotification(CloudCallbackClient.status))
 
         val store = AgentStore(this)
         val executor = WorkflowExecutor(
@@ -46,7 +36,7 @@ class AutomationService : Service() {
             launchMainApp = ::launchMainPackage,
         )
         server = AgentHttpServer(this, store, executor).also { it.start() }
-        callbackClient = CloudCallbackClient(this, store).also { it.start() }
+        callbackClient = startCallbackClient(store)
     }
 
     fun acquireRunWakeLock() {
@@ -71,9 +61,17 @@ class AutomationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_RESTART_CALLBACK) {
-            callbackClient?.stop()
-            callbackClient = CloudCallbackClient(this, AgentStore(this)).also { it.start() }
+        when (intent?.action) {
+            ACTION_STOP_SERVICE -> {
+                preferences.serviceEnabled = false
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_RESTART_CALLBACK -> {
+                callbackClient?.stop()
+                callbackClient = startCallbackClient(AgentStore(this))
+            }
         }
         return START_STICKY
     }
@@ -94,11 +92,56 @@ class AutomationService : Service() {
         )
     }
 
+    private fun startCallbackClient(store: AgentStore): CloudCallbackClient? = runCatching {
+        CloudCallbackClient(this, store, ::updateNotification).also { it.start() }
+    }.getOrElse { error ->
+        val status = CloudCallbackClient.reportServiceFailure(
+            "Không thể khởi tạo Cloud: ${error.message ?: error.javaClass.simpleName}",
+        )
+        updateNotification(status)
+        null
+    }
+
+    private fun updateNotification(callbackStatus: CallbackStatus) {
+        runCatching {
+            val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(NOTIFICATION_ID, buildNotification(callbackStatus))
+        }
+    }
+
+    private fun buildNotification(callbackStatus: CallbackStatus): android.app.Notification {
+        val presentation = AgentNotificationPresentation.from(preferences.connectionMode, callbackStatus)
+        val openIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val stopIntent = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, AutomationService::class.java).setAction(ACTION_STOP_SERVICE),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(presentation.title)
+            .setContentText(presentation.text)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setSubText("AI Phone Automation System")
+            .setContentIntent(openIntent)
+            .addAction(R.drawable.ic_notification, "Dừng Agent", stopIntent)
+            .build()
+    }
+
     companion object {
         @Volatile var isRunning: Boolean = false
             private set
         private const val CHANNEL_ID = "aiphone_agent"
         private const val NOTIFICATION_ID = 1201
         const val ACTION_RESTART_CALLBACK = "com.aiphone.agent.RESTART_CALLBACK"
+        const val ACTION_STOP_SERVICE = "com.aiphone.agent.STOP_SERVICE"
     }
 }

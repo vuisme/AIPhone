@@ -24,6 +24,7 @@ data class CallbackStatus(val state: CallbackState, val message: String, val ser
 class CloudCallbackClient(
     context: Context,
     private val store: AgentStore,
+    private val onStatusChanged: ((CallbackStatus) -> Unit)? = null,
 ) {
     private val appContext = context.applicationContext
     private val preferences = AgentPreferences(appContext)
@@ -66,7 +67,11 @@ class CloudCallbackClient(
             return
         }
         publish(CallbackState.CONNECTING, "Đang kết nối Studio...")
-        socket = http.newWebSocket(Request.Builder().url(target).build(), listener)
+        runCatching {
+            socket = http.newWebSocket(Request.Builder().url(target).build(), listener)
+        }.onFailure {
+            scheduleReconnect(it.message ?: "Không thể khởi tạo kết nối callback")
+        }
     }
 
     private val listener = object : WebSocketListener() {
@@ -173,6 +178,7 @@ class CloudCallbackClient(
 
     private fun publish(state: CallbackState, message: String, serial: String? = null, accountName: String? = preferences.callbackAccountName.ifBlank { null }) {
         status = CallbackStatus(state, message, serial, accountName)
+        runCatching { onStatusChanged?.invoke(status) }
     }
 
     private data class LocalResult(val status: Int, val contentType: String, val body: ByteArray)
@@ -180,6 +186,10 @@ class CloudCallbackClient(
     companion object {
         @Volatile var status = CallbackStatus(CallbackState.DISABLED, "Cloud Callback đang tắt")
             private set
+
+        fun reportServiceFailure(message: String): CallbackStatus =
+            CallbackStatus(CallbackState.ERROR, message).also { status = it }
+
         private const val MAX_BODY_BYTES = 16 * 1024 * 1024
     }
 }

@@ -80,6 +80,9 @@ jobs:
       - name: Verify Android window insets compatibility
         run: node android-agent/scripts/verify-window-insets-compat.mjs
 
+      - name: Verify Android Agent surface
+        run: node android-agent/scripts/verify-agent-surface.mjs
+
       - name: Bundle Studio into Android assets
         run: |
           mkdir -p android-agent/app/src/main/assets/studio

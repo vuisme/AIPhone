@@ -23,6 +23,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -62,9 +63,14 @@ class MainActivity : Activity() {
     private var settingsRootValue: TextView? = null
     private var settingsAccessibilityValue: TextView? = null
     private var serviceButton: Button? = null
+    private var connectionModeValue: TextView? = null
+    private var cloudModeButton: Button? = null
+    private var adbModeButton: Button? = null
+    private var cloudModeContainer: LinearLayout? = null
+    private var adbModeContainer: LinearLayout? = null
     private var callbackAccountValue: TextView? = null
     private var callbackStatusValue: TextView? = null
-    private var callbackButton: Button? = null
+    private var cloudReconnectButton: Button? = null
     private var callbackConfigToggle: Button? = null
     private var callbackConfigContainer: LinearLayout? = null
     private var callbackUrlInput: EditText? = null
@@ -77,6 +83,8 @@ class MainActivity : Activity() {
     private var nightlyButton: Button? = null
     private var updateButton: Button? = null
     private var updateStatus: TextView? = null
+    private var connectionNotice: Pair<String, Int>? = null
+    private var connectionNoticeGeneration = 0
 
     private val statusRefresh = object : Runnable {
         override fun run() {
@@ -137,13 +145,11 @@ class MainActivity : Activity() {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(18), dp(12), dp(18), dp(10))
-        addView(TextView(context).apply {
-            text = "AI"
-            gravity = Gravity.CENTER
-            textSize = 16f
-            setTextColor(INK)
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            background = rounded(ACID, 13f, Color.TRANSPARENT)
+        addView(ImageView(context).apply {
+            setImageResource(R.drawable.ic_brand_mark)
+            setPadding(dp(9), dp(9), dp(9), dp(9))
+            contentDescription = "AI Phone"
+            background = rounded(PANEL_LIGHT, 13f, Color.rgb(61, 83, 75))
         }, LinearLayout.LayoutParams(dp(44), dp(44)))
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -224,12 +230,13 @@ class MainActivity : Activity() {
             dashboardAccessibilityValue = statusRow("UI INSPECTOR")
             addView(dashboardAccessibilityValue)
         })
-        addView(card().apply {
-            addView(label("AUTOMATION STAYS ON PHONE", ACID, 10f, true).apply { letterSpacing = .14f })
-            addView(label("Workflow và Asset đã đồng bộ được chạy trực tiếp trên thiết bị. Studio chỉ gửi lệnh bắt đầu và nhận kết quả.", Color.WHITE, 13f, false).apply {
-                setPadding(0, dp(10), 0, 0)
-                setLineSpacing(dp(4).toFloat(), 1f)
-            })
+        addView(label("AI PHONE AUTOMATION SYSTEM", MUTED, 9f, true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = .16f
+            setPadding(0, dp(16), 0, dp(8))
+        })
+        addView(label("Device Runtime · vc${BuildConfig.VERSION_CODE}", Color.rgb(78, 101, 93), 9f, false).apply {
+            gravity = Gravity.CENTER
         })
     }
 
@@ -254,35 +261,53 @@ class MainActivity : Activity() {
             addView(serviceButton)
         })
 
-        addView(sectionTitle("STUDIO CONNECTION"))
+        addView(sectionTitle("CONNECTION MODE"))
         addView(card().apply {
-            addView(label("TÀI KHOẢN ĐÃ LIÊN KẾT", MUTED, 9f, true).apply { letterSpacing = .13f })
-            callbackAccountValue = label("Chưa liên kết", Color.WHITE, 18f, true).apply { setPadding(0, dp(8), 0, 0) }
-            addView(callbackAccountValue)
-            callbackStatusValue = label("Đang kiểm tra kết nối...", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) }
-            addView(callbackStatusValue)
-            callbackConfigContainer = LinearLayout(context).apply {
+            addView(label("TRANSPORT", MUTED, 9f, true).apply { letterSpacing = .13f })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(10), 0, 0)
+                cloudModeButton = actionButton("Cloud", primary = false) { setConnectionMode(ConnectionMode.CLOUD) }
+                adbModeButton = actionButton("ADB / USB", primary = false) { setConnectionMode(ConnectionMode.ADB) }
+                addView(cloudModeButton, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(6) })
+                addView(adbModeButton, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginStart = dp(6) })
+            })
+            connectionModeValue = label("Đang kiểm tra transport...", MUTED, 11f, false).apply { setPadding(0, dp(12), 0, 0) }
+            addView(connectionModeValue)
+
+            cloudModeContainer = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                visibility = View.GONE
-                setPadding(0, dp(12), 0, 0)
-                addView(label("ĐỊA CHỈ STUDIO", MUTED, 9f, true).apply { letterSpacing = .12f })
-                callbackUrlInput = EditText(context).apply {
-                    hint = "https://studio.example.com"
-                    setText(preferences.callbackUrl)
-                    setTextColor(Color.WHITE)
-                    setHintTextColor(MUTED)
-                    textSize = 13f
-                    isSingleLine = true
-                    setPadding(dp(13), 0, dp(13), 0)
-                    background = rounded(PANEL_LIGHT, 12f, Color.rgb(48, 65, 59))
+                setPadding(0, dp(15), 0, 0)
+                addView(divider())
+                addView(label("TÀI KHOẢN STUDIO", MUTED, 9f, true).apply { letterSpacing = .13f })
+                callbackAccountValue = label("Chưa liên kết", Color.WHITE, 18f, true).apply { setPadding(0, dp(8), 0, 0) }
+                addView(callbackAccountValue)
+                callbackStatusValue = label("Đang kiểm tra Cloud...", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) }
+                addView(callbackStatusValue)
+                callbackConfigContainer = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    visibility = View.GONE
+                    setPadding(0, dp(12), 0, 0)
+                    addView(label("ĐỊA CHỈ STUDIO", MUTED, 9f, true).apply { letterSpacing = .12f })
+                    callbackUrlInput = EditText(context).apply {
+                        hint = "https://studio.example.com"
+                        setText(preferences.callbackUrl)
+                        setTextColor(Color.WHITE)
+                        setHintTextColor(MUTED)
+                        textSize = 13f
+                        isSingleLine = true
+                        setPadding(dp(13), 0, dp(13), 0)
+                        background = rounded(PANEL_LIGHT, 12f, Color.rgb(48, 65, 59))
+                    }
+                    addView(callbackUrlInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) })
                 }
-                addView(callbackUrlInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) })
+                addView(callbackConfigContainer)
+                callbackConfigToggle = actionButton("Cấu hình Cloud", primary = false, action = ::toggleCallbackConfiguration)
+                addView(callbackConfigToggle)
+                cloudReconnectButton = actionButton("Kết nối lại Cloud", primary = true, action = ::reconnectCloud)
+                addView(cloudReconnectButton)
             }
-            addView(callbackConfigContainer)
-            callbackConfigToggle = actionButton(if (preferences.callbackUrl.isBlank()) "Thiết lập kết nối Studio" else "Cấu hình lại Studio", primary = false, action = ::toggleCallbackConfiguration)
-            addView(callbackConfigToggle)
-            callbackButton = actionButton("Kết nối Studio", primary = true, action = ::toggleCallback)
-            addView(callbackButton)
+            addView(cloudModeContainer)
         })
 
         callbackPairingCard = card().apply {
@@ -297,15 +322,16 @@ class MainActivity : Activity() {
         }
         addView(callbackPairingCard)
 
-        addView(card().apply {
+        adbModeContainer = card().apply {
             addView(label("USB / LOCAL TOKEN", MUTED, 9f, true).apply { letterSpacing = .13f })
-            addView(label("Token chỉ cần khi pairing trực tiếp qua USB. Studio đã lưu token sẽ tự dùng lại khi máy online.", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) })
+            addView(label("Dùng token này khi ghép máy với Studio qua ADB/USB. Token luôn được ẩn ngoài chế độ ADB.", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) })
             pairingTokenValue = secretValue()
             addView(pairingTokenValue)
             addView(actionButton("Lấy token", primary = false, action = ::revealPairingToken))
             pairingTokenCopyButton = actionButton("Sao chép token", primary = false, action = ::copyPairingToken).apply { visibility = View.GONE }
             addView(pairingTokenCopyButton)
-        })
+        }
+        addView(adbModeContainer)
 
         addView(sectionTitle("DEVICE PERMISSIONS"))
         addView(card().apply {
@@ -348,35 +374,47 @@ class MainActivity : Activity() {
         }
 
         val callback = CloudCallbackClient.status
+        val connectionMode = preferences.connectionMode
         val accountName = callback.accountName?.takeIf(String::isNotBlank) ?: preferences.callbackAccountName.takeIf(String::isNotBlank)
-        val connectionText = when (callback.state) {
+        val callbackError = callback.message.trim().take(160).ifBlank { "Mất kết nối, Agent sẽ tự thử lại" }
+        val cloudConnectionText = when (callback.state) {
             CallbackState.ONLINE -> "ONLINE · Studio đã kết nối"
             CallbackState.CONNECTING -> "CONNECTING · Đang kết nối Studio"
             CallbackState.WAITING_PAIRING -> "WAITING · Chờ xác thực trên Studio"
-            CallbackState.ERROR -> "OFFLINE · Đang tự kết nối lại"
-            CallbackState.DISABLED -> "OFFLINE · Cloud Callback đang tắt"
+            CallbackState.ERROR -> "OFFLINE · $callbackError"
+            CallbackState.DISABLED -> "OFFLINE · Cloud chưa khởi động"
         }
-        val connectionColor = when (callback.state) {
+        val cloudConnectionColor = when (callback.state) {
             CallbackState.ONLINE -> ACID
             CallbackState.CONNECTING -> SKY
             CallbackState.WAITING_PAIRING -> AMBER
             CallbackState.ERROR -> DANGER
             CallbackState.DISABLED -> MUTED
         }
-        dashboardConnectionValue?.apply { text = "KẾT NỐI STUDIO\n$connectionText"; setTextColor(connectionColor) }
+        val dashboardConnectionText = if (connectionMode == ConnectionMode.CLOUD) {
+            "TRANSPORT · CLOUD\n$cloudConnectionText"
+        } else {
+            "TRANSPORT · ADB / USB\n${if (running) "READY · Sẵn sàng nhận lệnh local" else "OFFLINE · Agent service đang dừng"}"
+        }
+        val dashboardConnectionColor = if (connectionMode == ConnectionMode.CLOUD) cloudConnectionColor else if (running) SKY else DANGER
+        dashboardConnectionValue?.apply { text = dashboardConnectionText; setTextColor(dashboardConnectionColor) }
         callbackAccountValue?.apply {
             text = accountName ?: "Chưa liên kết tài khoản"
             setTextColor(if (accountName != null) Color.WHITE else MUTED)
         }
-        callbackStatusValue?.apply { text = connectionText; setTextColor(connectionColor) }
-        callbackButton?.apply {
-            text = if (preferences.callbackEnabled) "Ngắt kết nối Studio" else if (preferences.callbackUrl.isBlank()) "Kết nối Studio" else "Kết nối lại Studio"
-            setTextColor(if (preferences.callbackEnabled) Color.WHITE else INK)
-            background = buttonBackground(if (preferences.callbackEnabled) DANGER else ACID)
+        callbackStatusValue?.apply { text = cloudConnectionText; setTextColor(cloudConnectionColor) }
+        connectionModeValue?.apply {
+            val notice = connectionNotice
+            text = notice?.first ?: if (connectionMode == ConnectionMode.CLOUD) "Cloud Callback · kết nối outbound bảo mật" else "ADB / USB · Studio điều khiển qua bridge local"
+            setTextColor(notice?.second ?: if (connectionMode == ConnectionMode.CLOUD) SKY else ACID)
         }
-        callbackConfigToggle?.visibility = if (preferences.callbackEnabled) View.GONE else View.VISIBLE
-        if (preferences.callbackEnabled) callbackConfigContainer?.visibility = View.GONE
-        callbackPairingCard?.visibility = if (callback.state == CallbackState.WAITING_PAIRING) View.VISIBLE else View.GONE
+        cloudModeContainer?.visibility = if (connectionMode == ConnectionMode.CLOUD) View.VISIBLE else View.GONE
+        adbModeContainer?.visibility = if (connectionMode == ConnectionMode.ADB) View.VISIBLE else View.GONE
+        callbackPairingCard?.visibility = if (connectionMode == ConnectionMode.CLOUD && callback.state == CallbackState.WAITING_PAIRING) View.VISIBLE else View.GONE
+        val cloudCanReconnect = callback.state == CallbackState.ERROR || callback.state == CallbackState.DISABLED
+        cloudReconnectButton?.visibility = if (connectionMode == ConnectionMode.CLOUD && cloudCanReconnect) View.VISIBLE else View.GONE
+        callbackConfigToggle?.visibility = if (connectionMode == ConnectionMode.CLOUD) View.VISIBLE else View.GONE
+        refreshConnectionModeButtons(connectionMode)
 
         val rooted = RootGateway.isRootGranted()
         val rootText = if (rooted) "ĐÃ CẤP · image + XSpace + silent update" else "KHÔNG ROOT · chế độ Accessibility giới hạn"
@@ -437,26 +475,34 @@ class MainActivity : Activity() {
         if (container.visibility == View.VISIBLE) callbackUrlInput?.requestFocus()
     }
 
-    private fun toggleCallback() {
-        if (preferences.callbackEnabled) {
-            preferences.callbackEnabled = false
-            restartCallback()
-            callbackButton?.postDelayed(::refreshStatus, 350)
-            return
-        }
+    private fun setConnectionMode(mode: ConnectionMode) {
+        hideSecrets()
+        preferences.connectionMode = mode
+        if (!AutomationService.isRunning && !startAgentService()) return
+        if (!restartCallback()) return
+        showConnectionNotice(
+            if (mode == ConnectionMode.CLOUD) "Đã chuyển sang Cloud · đang kết nối Studio" else "Đã chuyển sang ADB / USB · local bridge sẵn sàng",
+            if (mode == ConnectionMode.CLOUD) SKY else ACID,
+        )
+        if (mode == ConnectionMode.CLOUD && preferences.callbackUrl.isBlank()) callbackConfigContainer?.visibility = View.VISIBLE
+        refreshStatus()
+    }
+
+    private fun reconnectCloud() {
         val configured = callbackUrlInput?.text?.toString()?.trim().orEmpty().ifBlank { preferences.callbackUrl }
         val error = runCatching { CallbackEndpoint.websocketUrl(configured) }.exceptionOrNull()
         if (error != null) {
             callbackConfigContainer?.visibility = View.VISIBLE
-            callbackStatusValue?.apply { text = error.message ?: "Địa chỉ Studio không hợp lệ"; setTextColor(DANGER) }
+            showConnectionNotice(error.message ?: "Địa chỉ Studio không hợp lệ", DANGER)
             return
         }
         preferences.callbackUrl = configured
-        preferences.callbackEnabled = true
-        if (!AutomationService.isRunning) startAgentService()
-        restartCallback()
+        preferences.connectionMode = ConnectionMode.CLOUD
+        if (!AutomationService.isRunning && !startAgentService()) return
+        if (!restartCallback()) return
         callbackConfigContainer?.visibility = View.GONE
-        callbackButton?.postDelayed(::refreshStatus, 350)
+        showConnectionNotice("Đang kết nối lại Cloud...", SKY)
+        cloudReconnectButton?.postDelayed(::refreshStatus, 350)
     }
 
     private fun revealCallbackCode() {
@@ -504,14 +550,33 @@ class MainActivity : Activity() {
         pairingTokenCopyButton?.visibility = View.GONE
     }
 
-    private fun restartCallback() {
+    private fun restartCallback(): Boolean = runCatching {
         ContextCompat.startForegroundService(this, Intent(this, AutomationService::class.java).setAction(AutomationService.ACTION_RESTART_CALLBACK))
+    }.fold(
+        onSuccess = { true },
+        onFailure = {
+            showConnectionNotice("Không thể đổi kết nối: ${it.message ?: it.javaClass.simpleName}", DANGER)
+            false
+        },
+    )
+
+    private fun showConnectionNotice(message: String, color: Int) {
+        val generation = ++connectionNoticeGeneration
+        connectionNotice = message to color
+        refreshStatus()
+        refreshHandler.postDelayed({
+            if (generation == connectionNoticeGeneration) {
+                connectionNotice = null
+                refreshStatus()
+            }
+        }, 5_000)
     }
 
     private fun toggleService() {
         if (AutomationService.isRunning) {
             preferences.serviceEnabled = false
-            stopService(Intent(this, AutomationService::class.java))
+            runCatching { stopService(Intent(this, AutomationService::class.java)) }
+                .onFailure { showConnectionNotice("Không thể dừng Agent: ${it.message ?: it.javaClass.simpleName}", DANGER) }
         } else {
             preferences.serviceEnabled = true
             startAgentService()
@@ -519,9 +584,16 @@ class MainActivity : Activity() {
         serviceButton?.postDelayed(::refreshStatus, 250)
     }
 
-    private fun startAgentService() {
+    private fun startAgentService(): Boolean = runCatching {
         ContextCompat.startForegroundService(this, Intent(this, AutomationService::class.java))
-    }
+    }.fold(
+        onSuccess = { true },
+        onFailure = {
+            preferences.serviceEnabled = false
+            showConnectionNotice("Không thể khởi động Agent: ${it.message ?: it.javaClass.simpleName}", DANGER)
+            false
+        },
+    )
 
     private fun checkRoot() {
         settingsRootValue?.apply { text = "ROOT / KERNELSU\nĐang yêu cầu KernelSU..."; setTextColor(AMBER) }
@@ -609,6 +681,17 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun refreshConnectionModeButtons(mode: ConnectionMode) {
+        cloudModeButton?.apply {
+            setTextColor(if (mode == ConnectionMode.CLOUD) INK else Color.WHITE)
+            background = buttonBackground(if (mode == ConnectionMode.CLOUD) SKY else PANEL_LIGHT)
+        }
+        adbModeButton?.apply {
+            setTextColor(if (mode == ConnectionMode.ADB) INK else Color.WHITE)
+            background = buttonBackground(if (mode == ConnectionMode.ADB) ACID else PANEL_LIGHT)
+        }
+    }
+
     private fun clearPageReferences() {
         dashboardServiceValue = null
         dashboardConnectionValue = null
@@ -621,9 +704,14 @@ class MainActivity : Activity() {
         settingsRootValue = null
         settingsAccessibilityValue = null
         serviceButton = null
+        connectionModeValue = null
+        cloudModeButton = null
+        adbModeButton = null
+        cloudModeContainer = null
+        adbModeContainer = null
         callbackAccountValue = null
         callbackStatusValue = null
-        callbackButton = null
+        cloudReconnectButton = null
         callbackConfigToggle = null
         callbackConfigContainer = null
         callbackUrlInput = null

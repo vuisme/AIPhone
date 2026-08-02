@@ -105,6 +105,51 @@ test('secured bridge rejects requests without an authenticated cookie', async ()
   })
 })
 
+test('secured bridge keeps paired account devices visible while offline', async () => {
+  const bridge = { listDevices: async () => [] }
+  const repository = {
+    listDevices: async () => [{
+      id: 'device-row',
+      serial: 'cloud:device-1',
+      label: 'Xiaomi test',
+      model: '2509FPN0BC',
+      connectionMode: 'CLOUD_CALLBACK',
+      ownerUserId: 'member',
+      ownerDisplayName: 'Member',
+      hasCredential: false,
+    }],
+    connectedDeviceStatus: async () => { throw new Error('offline devices must not require another lookup') },
+  }
+  const services = securedServices(repository)
+  services.callbackHub = { attach: () => undefined, listOnlineDevices: () => [] }
+
+  await withServer({ bridge, bridgeOnly: true, services }, async (origin) => {
+    const response = await fetch(`${origin}/bridge/devices`, {
+      headers: { Origin: 'http://127.0.0.1:4173', Cookie: 'aiphone.sid=session-token' },
+    })
+
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), {
+      devices: [{
+        serial: 'cloud:device-1',
+        state: 'offline',
+        model: '2509FPN0BC',
+        product: null,
+        transportId: null,
+        claimed: true,
+        authorized: true,
+        paired: true,
+        canPair: false,
+        deviceId: 'device-row',
+        connectionMode: 'CLOUD_CALLBACK',
+        ownerUserId: 'member',
+        ownerDisplayName: 'Member',
+        label: 'Xiaomi test',
+      }],
+    })
+  })
+})
+
 test('secured full Studio serves the login shell without a session cookie', async () => {
   await withServer({ bridge: { listDevices: async () => [] }, services: securedServices() }, async (origin) => {
     const response = await fetch(`${origin}/`)

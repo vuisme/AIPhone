@@ -199,6 +199,26 @@ function safeDevice(device) {
   return safe
 }
 
+function offlineBridgeDevice(device, user) {
+  const canPair = device.connectionMode === 'USB' && (user.role === 'ADMIN' || device.ownerUserId === user.id)
+  return {
+    serial: device.serial,
+    state: 'offline',
+    model: device.model || null,
+    product: null,
+    transportId: null,
+    claimed: true,
+    authorized: true,
+    paired: device.connectionMode === 'CLOUD_CALLBACK' || device.hasCredential === true,
+    canPair,
+    deviceId: device.id,
+    connectionMode: device.connectionMode,
+    ownerUserId: device.ownerUserId,
+    ownerDisplayName: device.ownerDisplayName,
+    label: device.label,
+  }
+}
+
 export function createStudioServer({
   bridge = new AdbBridge(),
   projectStore = new ProjectStore(),
@@ -413,15 +433,18 @@ export function createStudioServer({
       if (url.pathname.startsWith('/studio/')) throw new HttpError(404, 'NOT_FOUND', 'Unknown Studio resource')
 
       if (request.method === 'GET' && url.pathname === '/bridge/devices') {
-        const devices = [...await bridge.listDevices(), ...(services?.callbackHub?.listOnlineDevices() || [])]
-        if (!services) return json(response, 200, { devices }, responseHeaders)
-        const visible = []
-        for (const device of devices) {
+        const liveDevices = [...await bridge.listDevices(), ...(services?.callbackHub?.listOnlineDevices() || [])]
+        if (!services) return json(response, 200, { devices: liveDevices }, responseHeaders)
+        const visibleBySerial = new Map(
+          (await services.repository.listDevices(authentication.user))
+            .map((device) => [device.serial, offlineBridgeDevice(device, authentication.user)]),
+        )
+        for (const device of liveDevices) {
           const status = await services.repository.connectedDeviceStatus(authentication.user, device.serial)
           if (status.claimed && status.authorized === false) continue
-          visible.push({ ...device, ...status })
+          visibleBySerial.set(device.serial, { ...visibleBySerial.get(device.serial), ...device, ...status })
         }
-        return json(response, 200, { devices: visible }, responseHeaders)
+        return json(response, 200, { devices: [...visibleBySerial.values()] }, responseHeaders)
       }
       const bridgeScreen = BRIDGE_SCREEN_PATH.exec(url.pathname)
       if (bridgeScreen && request.method === 'GET') {

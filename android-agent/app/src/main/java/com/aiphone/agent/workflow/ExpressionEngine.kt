@@ -7,6 +7,7 @@ import org.mozilla.javascript.Context
 import org.mozilla.javascript.ContextFactory
 import org.mozilla.javascript.NativeArray
 import org.mozilla.javascript.NativeObject
+import org.mozilla.javascript.Parser
 import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
 import org.mozilla.javascript.Token
@@ -25,7 +26,6 @@ import org.mozilla.javascript.ast.NumberLiteral
 import org.mozilla.javascript.ast.ObjectLiteral
 import org.mozilla.javascript.ast.ObjectProperty
 import org.mozilla.javascript.ast.ParenthesizedExpression
-import org.mozilla.javascript.ast.Parser
 import org.mozilla.javascript.ast.PropertyGet
 import org.mozilla.javascript.ast.StringLiteral
 import org.mozilla.javascript.ast.UnaryExpression

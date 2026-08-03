@@ -119,6 +119,10 @@ const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/
 const VARIABLE_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
 const VALUE_TYPES = new Set<WorkflowValueType>(['STRING', 'NUMBER', 'BOOLEAN', 'JSON'])
 
+function isExpressionTemplate(value: unknown): value is string {
+  return typeof value === 'string' && value.includes('{{') && value.includes('}}')
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {}
 }
@@ -315,19 +319,20 @@ export function validateWorkflow(workflow: WorkflowDocument): ValidationResult {
     if (!NODE_TYPES.has(node.type)) issues.push(`Node ${node.id} has unsupported type ${node.type}`)
     if (node.type === 'SET_VARIABLE') {
       const name = String(node.config.name ?? '')
-      if (!VARIABLE_PATTERN.test(name)) issues.push(`Node ${node.id} has invalid variable name ${name}`)
+      if (!VARIABLE_PATTERN.test(name) && !isExpressionTemplate(name)) issues.push(`Node ${node.id} has invalid variable name ${name}`)
     }
     if (node.type === 'TTS_SPEAK') {
       const name = String(node.config.outputVariable ?? '')
-      if (name && !VARIABLE_PATTERN.test(name)) issues.push(`Node ${node.id} has invalid output variable ${name}`)
+      if (name && !VARIABLE_PATTERN.test(name) && !isExpressionTemplate(name)) issues.push(`Node ${node.id} has invalid output variable ${name}`)
     }
     if (node.type === 'IF') {
       const name = String(node.config.leftVariable ?? '')
-      if (!VARIABLE_REFERENCE_PATTERN.test(name)) issues.push(`Node ${node.id} has invalid left variable ${name}`)
+      if (!VARIABLE_REFERENCE_PATTERN.test(name) && !isExpressionTemplate(name)) issues.push(`Node ${node.id} has invalid left variable ${name}`)
     }
 
     if (!node.disabled && (IMAGE_NODE_TYPES.has(node.type) || node.type === 'TAP_TEXT')) {
       const assetId = node.config.assetId
+      if (isExpressionTemplate(assetId)) continue
       const asset = typeof assetId === 'string' ? assetsById.get(assetId) : undefined
       const expectedType = node.type === 'TAP_TEXT' ? 'UI_SELECTOR' : 'IMAGE'
       if (!asset || asset.type !== expectedType) {

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nodeDefinition } from './nodeCatalog'
 import { NodeInspectorFields } from './NodeInspectorFields'
@@ -31,13 +31,13 @@ describe('TTS inspector', () => {
     />)
 
     expect(screen.getByLabelText('TTS engine')).toHaveTextContent('Speech Services by Google')
-    expect(screen.getByLabelText(/Voice \/ model ưu tiên/)).toHaveTextContent('On-device')
-    expect(screen.getByLabelText(/Voice \/ model ưu tiên/)).toHaveTextContent('vi-vn-local')
-    expect(screen.getByLabelText(/Voice \/ model ưu tiên/)).not.toHaveTextContent('en-us-local')
-    expect(screen.getByLabelText(/Ngôn ngữ/)).toHaveTextContent('vi-VN')
+    expect(screen.getByLabelText('Voice / model ưu tiên')).toHaveTextContent('On-device')
+    expect(screen.getByLabelText('Voice / model ưu tiên')).toHaveTextContent('vi-vn-local')
+    expect(screen.getByLabelText('Voice / model ưu tiên')).not.toHaveTextContent('en-us-local')
+    expect(screen.getByLabelText('Ngôn ngữ')).toHaveTextContent('vi-VN')
     expect(screen.getByText('1 engine · 2 voice trên máy đang chọn')).toBeInTheDocument()
     expect(screen.getByLabelText('Quét lại TTS model trên điện thoại')).toBeInTheDocument()
-    expect(screen.getByLabelText(/Nội dung đọc/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Nội dung đọc')).toBeInTheDocument()
   })
 })
 
@@ -75,5 +75,47 @@ describe('coordinate inspector actions', () => {
     />)
 
     expect(view.container.querySelector('.coordinate-picker-launch')).toBeNull()
+  })
+})
+
+describe('n8n-style expressions', () => {
+  it.each([
+    ['TAP_POINT', 'Tọa độ X'],
+    ['LAUNCH_APP', 'Chạy trên'],
+    ['TTS_SPEAK', 'Phát ngay trên điện thoại'],
+  ] as const)('enables expression mode for %s field %s', (nodeType, fieldLabel) => {
+    const definition = nodeDefinition(nodeType)
+    const onChange = vi.fn()
+    render(<NodeInspectorFields
+      definition={definition}
+      nodeType={nodeType}
+      config={definition.defaultConfig}
+      assets={[]}
+      variables={['minX']}
+      onChange={onChange}
+    />)
+
+    screen.getByRole('button', { name: `Dùng expression cho ${fieldLabel}` }).click()
+
+    expect(onChange).toHaveBeenCalledWith(expect.any(String), expect.stringMatching(/^\{\{/))
+  })
+
+  it('edits a numeric field as JavaScript and exposes variables and helpers', () => {
+    const definition = nodeDefinition('DELAY')
+    const onChange = vi.fn()
+    render(<NodeInspectorFields
+      definition={definition}
+      nodeType="DELAY"
+      config={{ durationMs: '{{ random(minDelay, 1000) }}' }}
+      assets={[]}
+      variables={['minDelay']}
+      onChange={onChange}
+    />)
+
+    const editor = screen.getByLabelText('Expression cho Thời gian chờ (ms)')
+    expect(editor).toHaveValue('{{ random(minDelay, 1000) }}')
+    expect(screen.getByText('random(min, max)')).toBeInTheDocument()
+    fireEvent.change(editor, { target: { value: '{{ minDelay * 2 }}' } })
+    expect(onChange).toHaveBeenCalledWith('durationMs', '{{ minDelay * 2 }}')
   })
 })

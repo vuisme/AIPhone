@@ -126,7 +126,10 @@ export function nodeRequirement(type: NodeType, config: Record<string, unknown>)
   if (['WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE', 'TAP_POINT', 'SWIPE'].includes(type)) return 'ACCESSIBILITY_OR_ROOT'
   if (type === 'TAP_TEXT') return 'ACCESSIBILITY'
   if (['CREATE_CLONE', 'DELETE_CLONE', 'CLEAR_CLONE', 'FORCE_STOP_APP'].includes(type)) return 'ROOT'
-  if (type === 'LAUNCH_APP') return Number(config.userId ?? 999) === 0 ? 'NONE' : 'ROOT'
+  if (type === 'LAUNCH_APP') {
+    if (typeof config.userId === 'string' && config.userId.includes('{{')) return 'NONE'
+    return Number(config.userId ?? 999) === 0 ? 'NONE' : 'ROOT'
+  }
   return 'NONE'
 }
 

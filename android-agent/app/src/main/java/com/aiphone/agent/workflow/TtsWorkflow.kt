@@ -28,6 +28,18 @@ data class TtsSpeakOptions(
             outputVariable = config.optString("outputVariable"),
         )
 
+        fun fromResolvedConfig(config: JSONObject): TtsSpeakOptions = create(
+            text = config.optString("text"),
+            enginePackage = config.optString("engine"),
+            preferredVoice = config.optString("voice"),
+            languageTag = config.optString("languageTag", "vi-VN"),
+            speechRate = config.optDouble("speechRate", 1.0).toFloat(),
+            pitch = config.optDouble("pitch", 1.0).toFloat(),
+            playAudio = config.optBoolean("playAudio", false),
+            saveAudio = config.optBoolean("saveAudio", true),
+            outputVariable = config.optString("outputVariable"),
+        )
+
         fun fromValues(
             textTemplate: String,
             context: RunContext,
@@ -40,7 +52,30 @@ data class TtsSpeakOptions(
             saveAudio: Boolean = true,
             outputVariable: String? = null,
         ): TtsSpeakOptions {
-            val text = context.interpolate(textTemplate)
+            return create(
+                text = context.interpolate(textTemplate),
+                enginePackage = enginePackage,
+                preferredVoice = preferredVoice,
+                languageTag = languageTag,
+                speechRate = speechRate,
+                pitch = pitch,
+                playAudio = playAudio,
+                saveAudio = saveAudio,
+                outputVariable = outputVariable,
+            )
+        }
+
+        private fun create(
+            text: String,
+            enginePackage: String?,
+            preferredVoice: String?,
+            languageTag: String,
+            speechRate: Float,
+            pitch: Float,
+            playAudio: Boolean,
+            saveAudio: Boolean,
+            outputVariable: String?,
+        ): TtsSpeakOptions {
             require(text.isNotBlank()) { "TTS text is required" }
             require(text.length <= MAX_TEXT_LENGTH) { "TTS text cannot exceed $MAX_TEXT_LENGTH characters" }
             val resolvedLanguageTag = languageTag.trim().ifBlank { "vi-VN" }

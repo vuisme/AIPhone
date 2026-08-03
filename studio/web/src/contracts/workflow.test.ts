@@ -143,4 +143,19 @@ describe('workflow validation', () => {
 
     expect(validateWorkflow(workflow).issues).not.toContain('Node check-audio-size has invalid left variable ttsResult.file.sizeBytes')
   })
+
+  it('defers validation for node inputs produced by expressions at runtime', () => {
+    const workflow = createStarterWorkflow()
+    workflow.nodes.push(
+      { id: 'dynamic-variable', type: 'SET_VARIABLE', position: { x: 200, y: 100 }, config: { name: '{{ outputName }}', valueType: 'NUMBER', value: '{{ random(5, 10) }}' } },
+      { id: 'dynamic-if', type: 'IF', position: { x: 400, y: 100 }, config: { leftVariable: '{{ variablePath }}', operator: 'EQUALS', rightSource: 'LITERAL', rightType: 'STRING', rightValue: 'ok' } },
+      { id: 'dynamic-image', type: 'WAIT_IMAGE', position: { x: 600, y: 100 }, config: { assetId: '{{ targetAssetId }}', timeoutMs: '{{ random(500, 1000) }}' } },
+    )
+
+    const issues = validateWorkflow(workflow).issues
+
+    expect(issues).not.toContain('Node dynamic-variable has invalid variable name {{ outputName }}')
+    expect(issues).not.toContain('Node dynamic-if has invalid left variable {{ variablePath }}')
+    expect(issues.some((issue) => issue.includes('dynamic-image references missing'))).toBe(false)
+  })
 })

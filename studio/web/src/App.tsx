@@ -43,6 +43,11 @@ type CaptureTarget =
   | { kind: 'ASSET'; workflowId: string; initialImageAsset?: ImageAssetRecord }
   | { kind: 'COORDINATE'; workflowId: string; nodeId: string; mode: GestureMode; initialSelection: GestureSelection }
 
+function fixedCoordinate(value: unknown): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 const deploymentDependencies: DeploymentDependencies = {
   getInventory: (workflowId, serial) => agentApi.getWorkflowInventory(workflowId, serial),
   readAsset: (workflowId, assetId) => projectApi.getAssetImage(workflowId, assetId),
@@ -321,7 +326,7 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
         workflowId: workflow.id,
         nodeId: node.id,
         mode: 'TAP',
-        initialSelection: { start: { x: Number(node.config.x ?? 0), y: Number(node.config.y ?? 0) } },
+        initialSelection: { start: { x: fixedCoordinate(node.config.x), y: fixedCoordinate(node.config.y) } },
       })
     } else if (node.type === 'SWIPE') {
       setCaptureTarget({
@@ -330,8 +335,8 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
         nodeId: node.id,
         mode: 'SWIPE',
         initialSelection: {
-          start: { x: Number(node.config.x1 ?? 0), y: Number(node.config.y1 ?? 0) },
-          end: { x: Number(node.config.x2 ?? 0), y: Number(node.config.y2 ?? 0) },
+          start: { x: fixedCoordinate(node.config.x1), y: fixedCoordinate(node.config.y1) },
+          end: { x: fixedCoordinate(node.config.x2), y: fixedCoordinate(node.config.y2) },
         },
       })
     }

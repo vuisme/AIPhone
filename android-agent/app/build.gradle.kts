@@ -66,6 +66,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.mozilla:rhino:1.7.15")
 
     testImplementation("junit:junit:4.13.2")
 }

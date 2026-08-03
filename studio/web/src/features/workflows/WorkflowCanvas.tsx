@@ -38,6 +38,7 @@ interface WorkflowCanvasProps {
 }
 
 const nodeTypes = { workflow: WorkflowNodeCard }
+const VARIABLE_NAME = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
 
 function toFlowNode(node: WorkflowNode, activeNodeId?: string): Node<WorkflowNodeData> {
   return {
@@ -190,8 +191,8 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, o
   const categories = useMemo<NodeCategory[]>(() => ['Luồng', 'Dữ liệu', 'Hình ảnh', 'Tương tác', 'Âm thanh', 'Ứng dụng'], [])
   const variables = useMemo(() => Array.from(new Set([
     ...workflow.parameters.map((parameter) => parameter.name),
-    ...nodes.filter((node) => node.data.nodeType === 'SET_VARIABLE').map((node) => String(node.data.config.name ?? '')).filter(Boolean),
-    ...nodes.filter((node) => node.data.nodeType === 'TTS_SPEAK').flatMap((node) => ttsRuntimeVariableReferences(String(node.data.config.outputVariable ?? '')).map((reference) => reference.name)),
+    ...nodes.filter((node) => node.data.nodeType === 'SET_VARIABLE').map((node) => String(node.data.config.name ?? '')).filter((name) => VARIABLE_NAME.test(name)),
+    ...nodes.filter((node) => node.data.nodeType === 'TTS_SPEAK' && VARIABLE_NAME.test(String(node.data.config.outputVariable ?? ''))).flatMap((node) => ttsRuntimeVariableReferences(String(node.data.config.outputVariable)).map((reference) => reference.name)),
   ])).sort(), [nodes, workflow.parameters])
 
   return (

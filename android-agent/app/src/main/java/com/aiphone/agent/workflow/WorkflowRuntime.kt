@@ -45,7 +45,7 @@ data class RunValue(val type: WorkflowValueType, val value: Any?) {
     }
 }
 
-class RunContext {
+class RunContext(private val expressionEngine: ExpressionEngine = ExpressionEngine()) {
     private val values = linkedMapOf<String, RunValue>()
 
     @Synchronized
@@ -79,12 +79,42 @@ class RunContext {
         values.forEach { (name, value) -> put(name, value.toJson()) }
     }
 
-    fun interpolate(template: String): String = VARIABLE_TOKEN.replace(template) { match -> require(match.groupValues[1]).display() }
+    fun resolve(template: String): Any? {
+        val trimmed = template.trim()
+        val exact = TEMPLATE_EXPRESSION.find(trimmed)
+            ?.takeIf { it.range.first == 0 && it.range.last == trimmed.lastIndex }
+        if (exact != null) return evaluateExpression(exact.groupValues[1])
+        return TEMPLATE_EXPRESSION.replace(template) { match -> valueFromRuntime(evaluateExpression(match.groupValues[1])).display() }
+    }
+
+    fun interpolate(template: String): String = when (val resolved = resolve(template)) {
+        is String -> resolved
+        else -> valueFromRuntime(resolved).display()
+    }
+
+    fun resolveConfig(config: JSONObject): JSONObject = resolveJsonValue(config) as JSONObject
+
+    private fun evaluateExpression(expression: String): Any? {
+        val trimmed = expression.trim()
+        if (REFERENCE_PATTERN.matches(trimmed)) return require(trimmed).value
+        return expressionEngine.evaluate(trimmed, snapshot())
+    }
+
+    private fun resolveJsonValue(value: Any?): Any? = when (value) {
+        is String -> resolve(value)
+        is JSONObject -> JSONObject().apply {
+            value.keys().forEach { key -> put(key, resolveJsonValue(value.opt(key)) ?: JSONObject.NULL) }
+        }
+        is JSONArray -> JSONArray().apply {
+            for (index in 0 until value.length()) put(resolveJsonValue(value.opt(index)) ?: JSONObject.NULL)
+        }
+        else -> value
+    }
 
     companion object {
         private val VARIABLE_PATTERN = Regex("^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
         private val REFERENCE_PATTERN = Regex("^[a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*$")
-        private val VARIABLE_TOKEN = Regex("\\{\\{\\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*)\\s*\\}\\}")
+        private val TEMPLATE_EXPRESSION = Regex("\\{\\{(.*?)\\}\\}", RegexOption.DOT_MATCHES_ALL)
 
         private fun valueFromRuntime(value: Any?): RunValue = when (value) {
             null, JSONObject.NULL -> RunValue(WorkflowValueType.JSON, JSONObject.NULL)
@@ -101,7 +131,9 @@ class RunContext {
             for (index in 0 until parameters.length()) {
                 val parameter = parameters.getJSONObject(index)
                 val type = WorkflowValueType.valueOf(parameter.optString("type", WorkflowValueType.STRING.name))
-                set(parameter.getString("name"), RunValue.fromLiteral(type, parameter.opt("defaultValue")))
+                val rawValue = parameter.opt("defaultValue")
+                val resolvedValue = if (rawValue is String) resolve(rawValue) else rawValue
+                set(parameter.getString("name"), RunValue.fromLiteral(type, resolvedValue))
             }
         }
     }

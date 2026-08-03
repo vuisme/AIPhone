@@ -70,6 +70,7 @@ describe('node capability matrix', () => {
     expect(nodeRequirement('FORCE_STOP_APP', { userId: 0 })).toBe('ROOT')
     expect(nodeRequirement('LAUNCH_APP', { userId: 0 })).toBe('NONE')
     expect(nodeRequirement('LAUNCH_APP', { userId: 999 })).toBe('ROOT')
+    expect(nodeRequirement('LAUNCH_APP', { userId: '{{ targetUser }}' })).toBe('NONE')
   })
 
   it('shows a compact ROOT badge only when the current node configuration requires root', () => {

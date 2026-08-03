@@ -162,7 +162,7 @@ class CloudCallbackClient(
         try {
             connection.requestMethod = method
             connection.connectTimeout = 15_000
-            connection.readTimeout = 25_000
+            connection.readTimeout = callbackReadTimeoutMs(path)
             connection.setRequestProperty("X-AIPhone-Token", store.accessToken())
             headers.optString("content-type").takeIf(String::isNotBlank)?.let { connection.setRequestProperty("Content-Type", it) }
             if (body.isNotEmpty()) {
@@ -194,4 +194,10 @@ class CloudCallbackClient(
 
         private const val MAX_BODY_BYTES = 16 * 1024 * 1024
     }
+}
+
+internal fun callbackReadTimeoutMs(path: String): Int = when (path.substringBefore('?')) {
+    "/api/vision/ocr-screen" -> 75_000
+    "/api/screenshots" -> 45_000
+    else -> 25_000
 }

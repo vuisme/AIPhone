@@ -387,6 +387,7 @@ export const bridgeApi = {
   async captureScreen(serial = selectedSerial): Promise<Blob> {
     const response = await hostFetch(`/bridge/devices/${encodeURIComponent(serial)}/screen`, { cache: 'no-store' })
     if (!response.ok) throw new Error(apiErrorMessage(await response.text(), response.status))
+    if (!response.headers.get('content-type')?.startsWith('image/')) throw new Error('Cloud Callback không trả về dữ liệu ảnh')
     return response.blob()
   },
 
@@ -444,11 +445,16 @@ export const projectApi = {
 }
 
 export function apiErrorMessage(body: string, status: number): string {
+  const normalized = body.trim()
+  if (/(?:<!doctype\s+html|<html\b)/i.test(normalized)) {
+    if (status === 504) return 'Cloud Callback quá thời gian phản hồi (HTTP 504). Hãy thử lại.'
+    return `Máy chủ trả về trang lỗi HTML (HTTP ${status})`
+  }
   try {
-    const parsed = JSON.parse(body) as { error?: string | { message?: string } }
+    const parsed = JSON.parse(normalized) as { error?: string | { message?: string } }
     return (typeof parsed.error === 'string' ? parsed.error : parsed.error?.message) || `HTTP ${status}`
   } catch {
-    return body || `HTTP ${status}`
+    return normalized || `HTTP ${status}`
   }
 }
 

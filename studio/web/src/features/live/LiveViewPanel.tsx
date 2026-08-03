@@ -36,14 +36,15 @@ export function LiveViewPanel({ serial, onClose }: LiveViewPanelProps) {
       if (previous) URL.revokeObjectURL(previous)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : `Không thể lấy màn hình qua ${cloud ? 'Cloud Callback' : 'USB'}`)
+      if (cloud) setPlaying(false)
     } finally {
       capturing.current = false
     }
   }, [serial])
 
   useEffect(() => {
-    void captureFrame()
     if (!isPlaying) return
+    void captureFrame()
     const timer = window.setInterval(() => void captureFrame(), 1000 / fps)
     return () => window.clearInterval(timer)
   }, [captureFrame, fps, isPlaying])

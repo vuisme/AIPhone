@@ -4,7 +4,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { agentPathFromBridgeUrl, bridgeCorsHeaders, createStudioServer } from '../server.mjs'
+import { agentPathFromBridgeUrl, bridgeCorsHeaders, callbackTimeoutForPath, createStudioServer } from '../server.mjs'
 import { ProjectStore } from '../project-store.mjs'
 import { forbidden, unauthorized } from '../errors.mjs'
 
@@ -79,6 +79,12 @@ test('agentPathFromBridgeUrl rejects traversal and non-API targets', () => {
   assert.throws(() => agentPathFromBridgeUrl('/bridge/devices/c421ff5b/http://127.0.0.1:22', 'c421ff5b'), /invalid agent path/i)
   assert.throws(() => agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/../private', 'c421ff5b'), /invalid agent path/i)
   assert.throws(() => agentPathFromBridgeUrl('/bridge/devices/other/api/device', 'c421ff5b'), /invalid agent path/i)
+})
+
+test('callbackTimeoutForPath reserves enough time for visual commands', () => {
+  assert.equal(callbackTimeoutForPath('/api/device'), 25_000)
+  assert.equal(callbackTimeoutForPath('/api/screenshots'), 60_000)
+  assert.equal(callbackTimeoutForPath('/api/vision/ocr-screen'), 90_000)
 })
 
 test('bridge-only CORS accepts only local Studio origins', () => {
@@ -245,6 +251,33 @@ test('secured bridge tunnels authorized Agent API requests through Cloud Callbac
       ['authorize', 'cloud:device-1'],
       ['request', 'cloud:device-1', 'GET', '/api/device', ''],
     ])
+  })
+})
+
+test('secured bridge coalesces concurrent Cloud Callback screenshots', async () => {
+  let screenshotRequests = 0
+  const repository = {
+    connectedDeviceStatus: async () => ({ claimed: true, authorized: true, connectionMode: 'CLOUD_CALLBACK' }),
+  }
+  const services = securedServices(repository)
+  services.callbackHub = {
+    attach: () => undefined,
+    request: async (_serial, command) => {
+      screenshotRequests += 1
+      assert.equal(command.path, '/api/screenshots')
+      assert.equal(command.timeoutMs, 60_000)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      return { status: 200, contentType: 'image/png', body: Buffer.from([0x89, 0x50, 0x4e, 0x47]) }
+    },
+  }
+  await withServer({ bridge: { listDevices: async () => [] }, bridgeOnly: true, services }, async (origin) => {
+    const headers = { Origin: 'http://127.0.0.1:4173', Cookie: 'aiphone.sid=session-token' }
+    const path = `${origin}/bridge/devices/cloud%3Adevice-1/screen`
+    const [first, second] = await Promise.all([fetch(path, { headers }), fetch(path, { headers })])
+
+    assert.equal(first.status, 200)
+    assert.equal(second.status, 200)
+    assert.equal(screenshotRequests, 1)
   })
 })
 

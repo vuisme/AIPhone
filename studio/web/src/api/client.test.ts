@@ -35,4 +35,10 @@ describe('apiErrorMessage', () => {
   it('preserves plain bridge failures', () => {
     expect(apiErrorMessage('ADB device is not connected', 404)).toBe('ADB device is not connected')
   })
+
+  it('replaces Cloudflare HTML gateway pages with a concise timeout message', () => {
+    const html = '<!DOCTYPE html><html><head><title>504: Gateway time-out</title></head><body>Host Error</body></html>'
+
+    expect(apiErrorMessage(html, 504)).toBe('Cloud Callback quá thời gian phản hồi (HTTP 504). Hãy thử lại.')
+  })
 })

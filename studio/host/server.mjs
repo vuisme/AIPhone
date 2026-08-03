@@ -57,6 +57,13 @@ const BRIDGE_SCREEN_PATH = /^\/bridge\/devices\/([^/]+)\/screen$/
 const BRIDGE_TAP_PATH = /^\/bridge\/devices\/([^/]+)\/input\/tap$/
 const MAX_STUDIO_BODY_BYTES = 12 * 1024 * 1024
 
+export function callbackTimeoutForPath(path) {
+  const pathname = String(path).split('?', 1)[0]
+  if (pathname === '/api/vision/ocr-screen') return 90_000
+  if (pathname === '/api/screenshots') return 60_000
+  return 25_000
+}
+
 export function agentPathFromBridgeUrl(rawUrl, serial) {
   const prefix = `/bridge/devices/${encodeURIComponent(serial)}`
   if (!rawUrl.startsWith(`${prefix}/`)) throw new Error('Invalid agent path')
@@ -235,6 +242,21 @@ export function createStudioServer({
   bridgeOnly = false,
   staticOnly = false,
 } = {}) {
+  const callbackScreens = new Map()
+  const requestCallbackScreen = (serial) => {
+    const existing = callbackScreens.get(serial)
+    if (existing) return existing
+    const pending = services.callbackHub.request(serial, {
+      method: 'POST',
+      path: '/api/screenshots',
+      timeoutMs: callbackTimeoutForPath('/api/screenshots'),
+    })
+    const tracked = Promise.resolve(pending).finally(() => {
+      if (callbackScreens.get(serial) === tracked) callbackScreens.delete(serial)
+    })
+    callbackScreens.set(serial, tracked)
+    return tracked
+  }
   const server = http.createServer(async (request, response) => {
     const requestId = request.headers['x-request-id'] || randomUUID()
     let responseHeaders = { 'X-Request-Id': requestId }
@@ -464,7 +486,7 @@ export function createStudioServer({
           if (deviceStatus.claimed && deviceStatus.authorized === false) throw forbidden('This account cannot access the selected device')
         }
         if (deviceStatus?.connectionMode === 'CLOUD_CALLBACK') {
-          const result = await services.callbackHub.request(serial, { method: 'POST', path: '/api/screenshots' })
+          const result = await requestCallbackScreen(serial)
           return bytes(response, result.status, result.contentType, result.body, responseHeaders)
         }
         return bytes(response, 200, 'image/png', await bridge.captureScreen(serial), responseHeaders)
@@ -501,12 +523,15 @@ export function createStudioServer({
           await services.repository.connectionForUse(authentication.user, serial)
           const requestHeaders = {}
           if (typeof request.headers['content-type'] === 'string') requestHeaders['content-type'] = request.headers['content-type']
-          const result = await services.callbackHub.request(serial, {
-            method: request.method,
-            path: targetPath,
-            headers: requestHeaders,
-            body: await requestBody(request),
-          })
+          const result = request.method === 'POST' && targetPath === '/api/screenshots'
+            ? await requestCallbackScreen(serial)
+            : await services.callbackHub.request(serial, {
+                method: request.method,
+                path: targetPath,
+                headers: requestHeaders,
+                body: await requestBody(request),
+                timeoutMs: callbackTimeoutForPath(targetPath),
+              })
           return bytes(response, result.status, result.contentType, result.body, {
             ...responseHeaders,
             ...([401, 403].includes(result.status) ? { 'X-AIPhone-Pairing-Rejected': '1' } : {}),

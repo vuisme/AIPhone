@@ -180,21 +180,23 @@ export class CallbackHub {
     return this.onlineBySerial.get(serial)?.socket.readyState === WebSocket.OPEN
   }
 
-  async request(serial, { method, path, headers = {}, body = Buffer.alloc(0) }) {
+  async request(serial, { method, path, headers = {}, body = Buffer.alloc(0), timeoutMs = REQUEST_TIMEOUT_MS }) {
     const connection = this.onlineBySerial.get(serial)
     if (!connection || connection.socket.readyState !== WebSocket.OPEN) throw new HttpError(404, 'DEVICE_NOT_CONNECTED', 'Callback device is offline')
     const requestBody = Buffer.isBuffer(body) ? body : Buffer.from(body)
     if (requestBody.length > CALLBACK_MAX_BODY_BYTES) throw new HttpError(413, 'BODY_TOO_LARGE', 'Callback request body is too large')
     if (connection.requests.size >= 16) throw new HttpError(429, 'DEVICE_BUSY', 'Callback device has too many pending commands')
     const requestId = randomUUID()
+    const effectiveTimeoutMs = Math.min(90_000, Math.max(1_000, Number(timeoutMs) || REQUEST_TIMEOUT_MS))
+    const startedAt = Date.now()
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         connection.requests.delete(requestId)
-        this.log('warn', 'callback_command_timeout', { requestId, serial, method, path: path.split('?', 1)[0] })
+        this.log('warn', 'callback_command_timeout', { requestId, serial, method, path: path.split('?', 1)[0], timeoutMs: effectiveTimeoutMs, pendingCommands: connection.requests.size })
         reject(new HttpError(504, 'CALLBACK_TIMEOUT', 'Callback device did not respond in time'))
-      }, REQUEST_TIMEOUT_MS)
+      }, effectiveTimeoutMs)
       timer.unref?.()
-      connection.requests.set(requestId, { resolve, reject, timer })
+      connection.requests.set(requestId, { resolve, reject, timer, startedAt, method, path })
       connection.socket.send(JSON.stringify({
         type: 'COMMAND',
         requestId,
@@ -217,6 +219,17 @@ export class CallbackHub {
     if (!pending) return
     clearTimeout(pending.timer)
     connection.requests.delete(result.requestId)
+    const durationMs = Date.now() - pending.startedAt
+    if (durationMs >= 5_000) {
+      this.log('info', 'callback_command_slow', {
+        requestId: result.requestId,
+        serial: connection.serial,
+        method: pending.method,
+        path: pending.path.split('?', 1)[0],
+        durationMs,
+        bodyBytes: result.body.length,
+      })
+    }
     pending.resolve(result)
   }
 

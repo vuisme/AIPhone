@@ -335,6 +335,8 @@ class MainActivity : Activity() {
                 addView(callbackAccountValue)
                 callbackStatusValue = label("Đang kiểm tra Cloud...", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) }
                 addView(callbackStatusValue)
+                callbackPairingCard = buildCallbackPairingCard()
+                addView(callbackPairingCard)
                 callbackConfigContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     visibility = View.GONE
@@ -360,20 +362,6 @@ class MainActivity : Activity() {
             }
             addView(cloudModeContainer)
         })
-
-        callbackPairingCard = card().apply {
-            visibility = View.GONE
-            addView(label("PAIRING CLOUD", MUTED, 9f, true).apply { letterSpacing = .13f })
-            callbackPairingHintValue = label("Đang kiểm tra trạng thái pairing...", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) }
-            addView(callbackPairingHintValue)
-            callbackCodeValue = secretValue()
-            addView(callbackCodeValue)
-            callbackPairingButton = actionButton("Lấy mã pairing", primary = false, action = ::handleCallbackPairing)
-            addView(callbackPairingButton)
-            callbackCodeCopyButton = actionButton("Sao chép mã", primary = false, action = ::copyCallbackCode).apply { visibility = View.GONE }
-            addView(callbackCodeCopyButton)
-        }
-        addView(callbackPairingCard)
 
         adbModeContainer = card().apply {
             addView(label("USB / LOCAL TOKEN", MUTED, 9f, true).apply { letterSpacing = .13f })
@@ -466,7 +454,12 @@ class MainActivity : Activity() {
         val pairingPresentation = CallbackPairingPresentation.from(connectionMode, callback.state, preferences.callbackPairingRequested)
         callbackPairingCard?.visibility = if (pairingPresentation.visible) View.VISIBLE else View.GONE
         callbackPairingHintValue?.text = pairingPresentation.description
-        callbackPairingButton?.text = pairingPresentation.buttonLabel
+        callbackPairingButton?.apply {
+            text = pairingPresentation.buttonLabel
+            val active = pairingPresentation.action == CallbackPairingAction.REVEAL_CODE
+            setTextColor(if (active) INK else Color.WHITE)
+            background = buttonBackground(if (active) AMBER else PANEL_LIGHT)
+        }
         val cloudCanReconnect = callback.state == CallbackState.ERROR || callback.state == CallbackState.DISABLED
         cloudReconnectButton?.visibility = if (connectionMode == ConnectionMode.CLOUD && cloudCanReconnect) View.VISIBLE else View.GONE
         callbackConfigToggle?.visibility = if (connectionMode == ConnectionMode.CLOUD) View.VISIBLE else View.GONE
@@ -488,6 +481,24 @@ class MainActivity : Activity() {
         val workflowSummary = workflowSummary()
         dashboardWorkflowValue?.apply { text = "WORKFLOWS ĐÃ ĐỒNG BỘ\n${workflowSummary.first} workflow · revision mới nhất r${workflowSummary.second}"; setTextColor(SKY) }
         refreshChannelButtons()
+    }
+
+    private fun buildCallbackPairingCard() = card().apply {
+        visibility = View.GONE
+        background = rounded(PANEL_LIGHT, 14f, Color.rgb(55, 74, 67))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(14)
+            bottomMargin = dp(10)
+        }
+        addView(label("PAIRING CLOUD", MUTED, 9f, true).apply { letterSpacing = .13f })
+        callbackPairingHintValue = label("Đang kiểm tra trạng thái pairing...", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) }
+        addView(callbackPairingHintValue)
+        callbackCodeValue = secretValue()
+        addView(callbackCodeValue)
+        callbackPairingButton = actionButton("Lấy mã pairing", primary = false, action = ::handleCallbackPairing)
+        addView(callbackPairingButton)
+        callbackCodeCopyButton = actionButton("Sao chép mã", primary = false, action = ::copyCallbackCode).apply { visibility = View.GONE }
+        addView(callbackCodeCopyButton)
     }
 
     private fun refreshWorkflowList() {

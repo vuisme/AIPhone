@@ -22,6 +22,12 @@ assert.doesNotMatch(service, /Studio cục bộ tại cổng/)
 assert.match(callbackClient, /onStatusChanged/)
 assert.match(callbackClient, /reportServiceFailure/)
 assert.match(activity, /callback\.message\.trim\(\)/)
+assert.match(callbackClient, /pairingRequested/)
+assert.match(activity, /Kết nối lại bằng mã pairing/)
+assert.ok(
+  activity.indexOf('callbackPairingCard = buildCallbackPairingCard()') < activity.indexOf('callbackConfigContainer = LinearLayout(context)'),
+  'Cloud pairing controls must stay next to the account status, before advanced Cloud configuration',
+)
 assert.doesNotMatch(launcher, /M43,69 L51,41 L59,69/)
 
 console.log('Android Agent exposes professional connection modes, branding, and notification controls.')

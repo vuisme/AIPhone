@@ -153,6 +153,7 @@ class CloudCallbackClient(
             .put("requestId", requestId)
             .put("status", result.status)
             .put("contentType", result.contentType)
+            .put("headers", JSONObject(result.headers))
             .put("bodyBase64", Base64.encodeToString(result.body, Base64.NO_WRAP))
             .toString())
     }
@@ -172,7 +173,10 @@ class CloudCallbackClient(
             }
             val status = connection.responseCode
             val responseBody = (if (status >= 400) connection.errorStream else connection.inputStream)?.use { it.readBytes() } ?: byteArrayOf()
-            return LocalResult(status, connection.contentType ?: "application/octet-stream", responseBody)
+            val responseHeaders = CAPTURE_RESPONSE_HEADERS.mapNotNull { name ->
+                connection.getHeaderField(name)?.let { value -> name.lowercase() to value }
+            }.toMap()
+            return LocalResult(status, connection.contentType ?: "application/octet-stream", responseBody, responseHeaders)
         } finally {
             connection.disconnect()
         }
@@ -183,7 +187,12 @@ class CloudCallbackClient(
         runCatching { onStatusChanged?.invoke(status) }
     }
 
-    private data class LocalResult(val status: Int, val contentType: String, val body: ByteArray)
+    private data class LocalResult(
+        val status: Int,
+        val contentType: String,
+        val body: ByteArray,
+        val headers: Map<String, String> = emptyMap(),
+    )
 
     companion object {
         @Volatile var status = CallbackStatus(CallbackState.DISABLED, "Cloud Callback đang tắt")
@@ -193,11 +202,22 @@ class CloudCallbackClient(
             CallbackStatus(CallbackState.ERROR, message).also { status = it }
 
         private const val MAX_BODY_BYTES = 16 * 1024 * 1024
+        private val CAPTURE_RESPONSE_HEADERS = listOf(
+            "X-AIPhone-Capture-Id",
+            "X-AIPhone-Source-Width",
+            "X-AIPhone-Source-Height",
+            "X-AIPhone-Preview-Width",
+            "X-AIPhone-Preview-Height",
+            "X-AIPhone-Capture-Expires-At",
+        )
     }
 }
 
 internal fun callbackReadTimeoutMs(path: String): Int = when (path.substringBefore('?')) {
     "/api/vision/ocr-screen" -> 75_000
     "/api/screenshots" -> 45_000
-    else -> 25_000
+    "/api/captures" -> 45_000
+    else -> if (CAPTURE_CROP_PATH.matches(path.substringBefore('?'))) 45_000 else 25_000
 }
+
+private val CAPTURE_CROP_PATH = Regex("^/api/captures/[0-9a-f-]{36}/crop$")

@@ -21,6 +21,7 @@ import com.aiphone.agent.callback.CallbackStatus
 import com.aiphone.agent.callback.CloudCallbackClient
 import com.aiphone.agent.vision.AndroidMlKitScreenOcrGateway
 import com.aiphone.agent.vision.ScreenCaptureGateway
+import com.aiphone.agent.vision.CaptureSessionStore
 
 class AutomationService : Service() {
     private var server: AgentHttpServer? = null
@@ -53,6 +54,10 @@ class AutomationService : Service() {
             },
         )
         val screenOcrGateway = AndroidMlKitScreenOcrGateway(screenCaptureGateway::captureScreen)
+        val captureSessionStore = CaptureSessionStore(
+            directory = java.io.File(cacheDir, "capture-sessions"),
+            captureScreen = screenCaptureGateway::captureScreen,
+        )
         val executor = WorkflowExecutor(
             store = store,
             ttsGateway = ttsGateway,
@@ -67,6 +72,7 @@ class AutomationService : Service() {
             ttsGateway,
             runtimeCapabilityGateway,
             screenOcrGateway,
+            captureSessionStore,
             screenCaptureGateway::captureScreen,
         ).also { it.start() }
         callbackClient = startCallbackClient(store)

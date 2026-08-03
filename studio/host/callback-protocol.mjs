@@ -9,6 +9,16 @@ export const CALLBACK_PAIRING_SECONDS = 10 * 60
 const DEVICE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{15,100}$/
 const SECRET_PATTERN = /^[a-zA-Z0-9_-]{32,128}$/
 const PAIRING_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{10}$/
+const CALLBACK_RESPONSE_HEADERS = new Set([
+  'x-aiphone-capture-id',
+  'x-aiphone-source-width',
+  'x-aiphone-source-height',
+  'x-aiphone-preview-width',
+  'x-aiphone-preview-height',
+  'x-aiphone-capture-expires-at',
+])
+const CAPTURE_ID_PATTERN = /^[0-9a-f-]{36}$/
+const CAPTURE_NUMBER_PATTERN = /^\d{1,16}$/
 
 function boundedString(value, label, maximum, { required = true } = {}) {
   if (value === undefined || value === null || value === '') {
@@ -70,10 +80,20 @@ export function validateCallbackResult(input) {
   }
   const status = Number(input.status)
   if (!Number.isInteger(status) || status < 100 || status > 599) throw validation('Callback result status is invalid')
+  const rawHeaders = input.headers && typeof input.headers === 'object' && !Array.isArray(input.headers) ? input.headers : {}
+  const headers = Object.fromEntries(Object.entries(rawHeaders).flatMap(([name, value]) => {
+    const normalizedName = name.toLowerCase()
+    if (!CALLBACK_RESPONSE_HEADERS.has(normalizedName)) return []
+    const normalizedValue = boundedString(value, 'Callback response header', 160)
+    const pattern = normalizedName === 'x-aiphone-capture-id' ? CAPTURE_ID_PATTERN : CAPTURE_NUMBER_PATTERN
+    if (!pattern.test(normalizedValue)) throw validation('Callback response header is invalid')
+    return [[normalizedName, normalizedValue]]
+  }))
   return {
     requestId: input.requestId,
     status,
     contentType: boundedString(input.contentType, 'Callback content type', 160, { required: false }) || 'application/octet-stream',
+    headers,
     body: decodeCallbackBody(input.bodyBase64),
   }
 }

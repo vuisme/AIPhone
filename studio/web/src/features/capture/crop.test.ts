@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampSelection, displayToNativeRect } from './crop'
+import { clampSelection, displayToNativeRect, displayToNormalizedRect } from './crop'
 
 describe('Asset crop coordinates', () => {
   it('maps CSS display pixels to native screenshot pixels', () => {
@@ -28,5 +28,14 @@ describe('Asset crop coordinates', () => {
       width: 500,
       height: 380,
     })
+  })
+
+  it('converts a displayed selection to device-independent normalized coordinates', () => {
+    expect(
+      displayToNormalizedRect(
+        { x: 130.4, y: 60, width: 260.8, height: 120 },
+        { width: 1304, height: 600 },
+      ),
+    ).toEqual({ x: 0.1, y: 0.1, width: 0.2, height: 0.2 })
   })
 })

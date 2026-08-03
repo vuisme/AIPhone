@@ -9,6 +9,7 @@ export interface Size {
 }
 
 export interface Rect extends Point, Size {}
+export interface NormalizedRect extends Rect {}
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
@@ -36,5 +37,14 @@ export function displayToNativeRect(selection: Rect, display: Size, native: Size
     y: Math.round(selection.y * scaleY),
     width: Math.round(selection.width * scaleX),
     height: Math.round(selection.height * scaleY),
+  }
+}
+
+export function displayToNormalizedRect(selection: Rect, display: Size): NormalizedRect {
+  return {
+    x: selection.x / display.width,
+    y: selection.y / display.height,
+    width: selection.width / display.width,
+    height: selection.height / display.height,
   }
 }

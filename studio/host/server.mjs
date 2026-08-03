@@ -31,6 +31,8 @@ const API_PATHS = [
   /^\/api\/capabilities\/tts$/,
   /^\/api\/capabilities\/runtime$/,
   /^\/api\/screenshots$/,
+  /^\/api\/captures$/,
+  /^\/api\/captures\/[0-9a-f-]{36}\/crop$/,
   /^\/api\/vision\/ocr-screen$/,
   /^\/api\/input\/tap$/,
   /^\/api\/ui-hierarchy$/,
@@ -60,7 +62,7 @@ const MAX_STUDIO_BODY_BYTES = 12 * 1024 * 1024
 export function callbackTimeoutForPath(path) {
   const pathname = String(path).split('?', 1)[0]
   if (pathname === '/api/vision/ocr-screen') return 90_000
-  if (pathname === '/api/screenshots') return 60_000
+  if (pathname === '/api/screenshots' || pathname === '/api/captures' || /^\/api\/captures\/[0-9a-f-]{36}\/crop$/.test(pathname)) return 60_000
   return 25_000
 }
 
@@ -150,6 +152,7 @@ export function bridgeCorsHeaders(origin) {
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-CSRF-Token, Cache-Control, Pragma',
+    'Access-Control-Expose-Headers': 'X-AIPhone-Capture-Id, X-AIPhone-Source-Width, X-AIPhone-Source-Height, X-AIPhone-Preview-Width, X-AIPhone-Preview-Height, X-AIPhone-Capture-Expires-At',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',
   }
@@ -534,6 +537,7 @@ export function createStudioServer({
               })
           return bytes(response, result.status, result.contentType, result.body, {
             ...responseHeaders,
+            ...result.headers,
             ...([401, 403].includes(result.status) ? { 'X-AIPhone-Pairing-Rejected': '1' } : {}),
           })
         }

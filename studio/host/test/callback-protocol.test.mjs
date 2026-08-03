@@ -26,8 +26,23 @@ test('callback HELLO accepts only bounded protocol credentials and metadata', ()
   assert.throws(() => validateCallbackHello({ ...input, protocolVersion: 2 }))
 })
 
-test('callback RESULT decodes binary bodies with a bounded status', () => {
-  const result = validateCallbackResult({ type: 'RESULT', requestId: 'request-1', status: 200, contentType: 'image/png', bodyBase64: Buffer.from('png').toString('base64') })
-  assert.equal(result.body.toString(), 'png')
+test('callback RESULT decodes binary bodies and bounded response metadata', () => {
+  const result = validateCallbackResult({
+    type: 'RESULT',
+    requestId: 'request-1',
+    status: 200,
+    contentType: 'image/webp',
+    headers: {
+      'x-aiphone-capture-id': '87b6b073-f3a6-4e0b-9c06-794e79f7e3b8',
+      'x-ignored-header': 'not forwarded',
+    },
+    bodyBase64: Buffer.from('preview').toString('base64'),
+  })
+  assert.equal(result.body.toString(), 'preview')
+  assert.deepEqual(result.headers, { 'x-aiphone-capture-id': '87b6b073-f3a6-4e0b-9c06-794e79f7e3b8' })
   assert.throws(() => validateCallbackResult({ type: 'RESULT', requestId: 'request-1', status: 999 }))
+  assert.throws(() => validateCallbackResult({
+    type: 'RESULT', requestId: 'request-1', status: 200,
+    headers: { 'x-aiphone-source-width': '2608\r\nInjected: true' },
+  }))
 })

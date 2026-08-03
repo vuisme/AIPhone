@@ -117,9 +117,14 @@ test('CallbackHub correlates commands with binary device results', async () => {
 
   const responsePromise = hub.request('cloud:known', { method: 'GET', path: '/api/device' })
   const command = socket.messages.at(-1)
-  socket.emit('message', Buffer.from(JSON.stringify({ type: 'RESULT', requestId: command.requestId, status: 200, contentType: 'application/json', bodyBase64: Buffer.from('{"ok":true}').toString('base64') })))
+  socket.emit('message', Buffer.from(JSON.stringify({
+    type: 'RESULT', requestId: command.requestId, status: 200, contentType: 'application/json',
+    headers: { 'x-aiphone-source-width': '2608' },
+    bodyBase64: Buffer.from('{"ok":true}').toString('base64'),
+  })))
   const response = await responsePromise
   assert.equal(response.status, 200)
   assert.equal(response.body.toString(), '{"ok":true}')
+  assert.deepEqual(response.headers, { 'x-aiphone-source-width': '2608' })
   hub.close()
 })

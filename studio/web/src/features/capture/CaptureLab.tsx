@@ -1,14 +1,17 @@
 import { Image, LoaderCircle, RefreshCw, ScanText, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { AssetUpload, UiHierarchySnapshot } from '../../api/client'
+import type { AssetUpload, CapturePreview, NormalizedRect, UiHierarchySnapshot } from '../../api/client'
 import type { ImageAssetRecord, UiSelectorAssetRecord } from '../../contracts/workflow'
 import type { Size } from './crop'
 import { ImageAssetEditor } from './ImageAssetEditor'
 import { UiInspectorEditor } from './UiInspectorEditor'
+import { acquireCaptureSource, type CaptureSource } from './captureSource'
 
 interface CaptureLabProps {
   workflowId: string
   capture: () => Promise<Blob>
+  capturePreview: () => Promise<CapturePreview>
+  cropCapture: (captureId: string, rect: NormalizedRect) => Promise<Blob>
   inspect: () => Promise<UiHierarchySnapshot>
   initialImageAsset?: ImageAssetRecord
   onClose: () => void
@@ -21,15 +24,17 @@ export function CaptureLab(props: CaptureLabProps) {
   const [imageUrl, setImageUrl] = useState<string>()
   const [nativeSize, setNativeSize] = useState<Size>()
   const [hierarchy, setHierarchy] = useState<UiHierarchySnapshot>()
+  const [captureSource, setCaptureSource] = useState<CaptureSource>()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string>()
   const imageUrlRef = useRef<string | undefined>(undefined)
 
-  const replaceImageUrl = (blob: Blob) => {
-    const nextUrl = URL.createObjectURL(blob)
+  const replaceImageUrl = (source: CaptureSource) => {
+    const nextUrl = URL.createObjectURL(source.preview)
     if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current)
     imageUrlRef.current = nextUrl
-    setNativeSize(undefined)
+    setCaptureSource(source)
+    setNativeSize(source.mode === 'SESSION' ? source.sourceSize : undefined)
     setImageUrl(nextUrl)
   }
 
@@ -37,8 +42,11 @@ export function CaptureLab(props: CaptureLabProps) {
     setIsLoading(true)
     setError(undefined)
     try {
-      const [imageBlob, hierarchyResult] = await Promise.all([props.capture(), nextMode === 'TEXT' ? props.inspect() : Promise.resolve(undefined)])
-      replaceImageUrl(imageBlob)
+      const [source, hierarchyResult] = await Promise.all([
+        acquireCaptureSource(props.capturePreview, props.capture),
+        nextMode === 'TEXT' ? props.inspect() : Promise.resolve(undefined),
+      ])
+      replaceImageUrl(source)
       setHierarchy(hierarchyResult)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Không thể lấy dữ liệu từ điện thoại')
@@ -69,9 +77,9 @@ export function CaptureLab(props: CaptureLabProps) {
         <div className="capture-body capture-lab__body">
           {isLoading && <div className="capture-loading"><LoaderCircle className="spin" /><span>Đang lấy dữ liệu trực tiếp từ điện thoại...</span></div>}
           {error && !isLoading && <div className="capture-empty"><strong>Không thể mở Capture Lab</strong><p>{error}</p><button className="secondary-button" onClick={() => void refresh()}>Thử lại</button></div>}
-          {imageUrl && nativeSize && !isLoading && mode === 'IMAGE' && <ImageAssetEditor key={imageUrl} workflowId={props.workflowId} imageUrl={imageUrl} nativeSize={nativeSize} initialAsset={props.initialImageAsset} onSave={props.onSaveImage} />}
+          {imageUrl && nativeSize && !isLoading && mode === 'IMAGE' && <ImageAssetEditor key={imageUrl} workflowId={props.workflowId} imageUrl={imageUrl} nativeSize={nativeSize} initialAsset={props.initialImageAsset} crop={captureSource?.mode === 'SESSION' ? (rect) => props.cropCapture(captureSource.captureId, rect) : undefined} onSave={props.onSaveImage} />}
           {imageUrl && nativeSize && hierarchy && !isLoading && mode === 'TEXT' && <UiInspectorEditor key={hierarchy.capturedAt} workflowId={props.workflowId} imageUrl={imageUrl} nativeSize={nativeSize} hierarchy={hierarchy} onSave={props.onSaveSelector} />}
-          {imageUrl && <img className="capture-size-probe" src={imageUrl} alt="" onLoad={(event) => setNativeSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} />}
+          {imageUrl && <img className="capture-size-probe" src={imageUrl} alt="" onLoad={(event) => setNativeSize((current) => current ?? { width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} />}
         </div>
       </section>
     </div>

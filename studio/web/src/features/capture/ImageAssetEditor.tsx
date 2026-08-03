@@ -3,13 +3,14 @@ import { useRef, useState } from 'react'
 import type { AssetUpload } from '../../api/client'
 import type { ImageAssetRecord } from '../../contracts/workflow'
 import { slugifyId } from '../../lib/ids'
-import { clampSelection, displayToNativeRect, type Point, type Rect, type Size } from './crop'
+import { clampSelection, displayToNativeRect, displayToNormalizedRect, type NormalizedRect, type Point, type Rect, type Size } from './crop'
 
 interface ImageAssetEditorProps {
   workflowId: string
   imageUrl: string
   nativeSize: Size
   initialAsset?: ImageAssetRecord
+  crop?: (rect: NormalizedRect) => Promise<Blob>
   onSave: (upload: AssetUpload) => Promise<void>
 }
 
@@ -24,7 +25,7 @@ function assetId(name: string): string {
   return `${slugifyId(name, 'asset')}-${Date.now().toString(36)}`
 }
 
-export function ImageAssetEditor({ workflowId, imageUrl, nativeSize, initialAsset, onSave }: ImageAssetEditorProps) {
+export function ImageAssetEditor({ workflowId, imageUrl, nativeSize, initialAsset, crop, onSave }: ImageAssetEditorProps) {
   const imageRef = useRef<HTMLImageElement>(null)
   const [start, setStart] = useState<Point>()
   const [selection, setSelection] = useState<Rect>()
@@ -46,11 +47,9 @@ export function ImageAssetEditor({ workflowId, imageUrl, nativeSize, initialAsse
     try {
       const displaySize = { width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height }
       const nativeRect = displayToNativeRect(selection, displaySize, nativeSize)
-      const canvas = document.createElement('canvas')
-      canvas.width = nativeRect.width
-      canvas.height = nativeRect.height
-      canvas.getContext('2d', { alpha: false })!.drawImage(image, nativeRect.x, nativeRect.y, nativeRect.width, nativeRect.height, 0, 0, nativeRect.width, nativeRect.height)
-      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Crop thất bại')), 'image/png'))
+      const blob = crop
+        ? await crop(displayToNormalizedRect(selection, displaySize))
+        : await cropInBrowser(image, nativeRect)
       const id = initialAsset?.id ?? assetId(name)
       const record: ImageAssetRecord = {
         id,
@@ -84,4 +83,12 @@ export function ImageAssetEditor({ workflowId, imageUrl, nativeSize, initialAsse
       </aside>
     </div>
   )
+}
+
+async function cropInBrowser(image: HTMLImageElement, nativeRect: Rect): Promise<Blob> {
+  const canvas = document.createElement('canvas')
+  canvas.width = nativeRect.width
+  canvas.height = nativeRect.height
+  canvas.getContext('2d', { alpha: false })!.drawImage(image, nativeRect.x, nativeRect.y, nativeRect.width, nativeRect.height, 0, 0, nativeRect.width, nativeRect.height)
+  return new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Crop thất bại')), 'image/png'))
 }

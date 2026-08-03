@@ -218,6 +218,21 @@ export interface AssetUpload {
   imageBase64: string
 }
 
+export interface NormalizedRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface CapturePreview {
+  captureId: string
+  preview: Blob
+  sourceSize: { width: number; height: number }
+  previewSize: { width: number; height: number }
+  expiresAt: number
+}
+
 export interface UiHierarchyNode {
   id: number
   parentId?: number
@@ -498,6 +513,18 @@ async function parseJson<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>
 }
 
+function requiredCaptureHeader(response: Response, name: string): string {
+  const value = response.headers.get(name)
+  if (!value) throw new Error(`Agent response is missing ${name}`)
+  return value
+}
+
+function positiveCaptureNumber(response: Response, name: string): number {
+  const value = Number(requiredCaptureHeader(response, name))
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`Agent response has invalid ${name}`)
+  return value
+}
+
 export const agentApi = {
   async getDevice(serial = selectedSerial): Promise<DeviceHealth> {
     return parseJson(await agentFetch('/api/device', {}, serial))
@@ -532,6 +559,38 @@ export const agentApi = {
     if (!response.headers.get('content-type')?.startsWith('image/')) {
       throw new Error('Agent chưa kết nối hoặc không trả về ảnh')
     }
+    return response.blob()
+  },
+
+  async capturePreview(): Promise<CapturePreview> {
+    const response = await agentFetch('/api/captures', { method: 'POST' })
+    if (!response.ok) throw await apiError(response)
+    if (!response.headers.get('content-type')?.startsWith('image/')) throw new Error('Agent không trả về ảnh preview')
+    const captureId = requiredCaptureHeader(response, 'X-AIPhone-Capture-Id')
+    if (!/^[0-9a-f-]{36}$/.test(captureId)) throw new Error('Agent trả về capture ID không hợp lệ')
+    return {
+      captureId,
+      preview: await response.blob(),
+      sourceSize: {
+        width: positiveCaptureNumber(response, 'X-AIPhone-Source-Width'),
+        height: positiveCaptureNumber(response, 'X-AIPhone-Source-Height'),
+      },
+      previewSize: {
+        width: positiveCaptureNumber(response, 'X-AIPhone-Preview-Width'),
+        height: positiveCaptureNumber(response, 'X-AIPhone-Preview-Height'),
+      },
+      expiresAt: positiveCaptureNumber(response, 'X-AIPhone-Capture-Expires-At'),
+    }
+  },
+
+  async cropCapture(captureId: string, rect: NormalizedRect): Promise<Blob> {
+    const response = await agentFetch(`/api/captures/${encodeURIComponent(captureId)}/crop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rect),
+    })
+    if (!response.ok) throw await apiError(response)
+    if (!response.headers.get('content-type')?.startsWith('image/png')) throw new Error('Agent không trả về ảnh crop PNG')
     return response.blob()
   },
 

@@ -70,6 +70,14 @@ test('agentPathFromBridgeUrl allows only fixed device API routes', () => {
     '/api/vision/ocr-screen',
   )
   assert.equal(
+    agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/captures', 'c421ff5b'),
+    '/api/captures',
+  )
+  assert.equal(
+    agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/captures/87b6b073-f3a6-4e0b-9c06-794e79f7e3b8/crop', 'c421ff5b'),
+    '/api/captures/87b6b073-f3a6-4e0b-9c06-794e79f7e3b8/crop',
+  )
+  assert.equal(
     agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/runs/audio/87b6b073-f3a6-4e0b-9c06-794e79f7e3b8', 'c421ff5b'),
     '/api/runs/audio/87b6b073-f3a6-4e0b-9c06-794e79f7e3b8',
   )
@@ -84,6 +92,8 @@ test('agentPathFromBridgeUrl rejects traversal and non-API targets', () => {
 test('callbackTimeoutForPath reserves enough time for visual commands', () => {
   assert.equal(callbackTimeoutForPath('/api/device'), 25_000)
   assert.equal(callbackTimeoutForPath('/api/screenshots'), 60_000)
+  assert.equal(callbackTimeoutForPath('/api/captures'), 60_000)
+  assert.equal(callbackTimeoutForPath('/api/captures/87b6b073-f3a6-4e0b-9c06-794e79f7e3b8/crop'), 60_000)
   assert.equal(callbackTimeoutForPath('/api/vision/ocr-screen'), 90_000)
 })
 
@@ -238,7 +248,12 @@ test('secured bridge tunnels authorized Agent API requests through Cloud Callbac
     isOnline: (serial) => serial === 'cloud:device-1',
     request: async (serial, command) => {
       calls.push(['request', serial, command.method, command.path, command.body.toString()])
-      return { status: 200, contentType: 'application/json', body: Buffer.from('{"transport":"callback"}') }
+      return {
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'x-aiphone-source-width': '2608' },
+        body: Buffer.from('{"transport":"callback"}'),
+      }
     },
   }
   await withServer({ bridge: { listDevices: async () => { throw new Error('ADB must not run') } }, bridgeOnly: true, services }, async (origin) => {
@@ -246,6 +261,7 @@ test('secured bridge tunnels authorized Agent API requests through Cloud Callbac
       headers: { Origin: 'http://127.0.0.1:4173', Cookie: 'aiphone.sid=session-token' },
     })
     assert.equal(response.status, 200)
+    assert.equal(response.headers.get('x-aiphone-source-width'), '2608')
     assert.deepEqual(await response.json(), { transport: 'callback' })
     assert.deepEqual(calls, [
       ['authorize', 'cloud:device-1'],

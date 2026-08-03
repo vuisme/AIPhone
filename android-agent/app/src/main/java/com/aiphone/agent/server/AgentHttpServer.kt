@@ -13,6 +13,8 @@ import com.aiphone.agent.workflow.WorkflowExecutor
 import com.aiphone.agent.workflow.TtsGateway
 import com.aiphone.agent.workflow.RuntimeCapabilityGateway
 import com.aiphone.agent.vision.ScreenOcrGateway
+import com.aiphone.agent.vision.CaptureSessionStore
+import com.aiphone.agent.vision.NormalizedRect
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -35,6 +37,7 @@ private data class HttpResponse(
     val status: Int,
     val contentType: String,
     val body: ByteArray,
+    val headers: Map<String, String> = emptyMap(),
 ) {
     companion object {
         fun json(status: Int = 200, body: JSONObject) = HttpResponse(status, "application/json; charset=utf-8", body.toString().toByteArray())
@@ -49,6 +52,7 @@ class AgentHttpServer(
     private val ttsGateway: TtsGateway,
     private val runtimeCapabilityGateway: RuntimeCapabilityGateway,
     private val screenOcrGateway: ScreenOcrGateway,
+    private val captureSessionStore: CaptureSessionStore,
     private val screenCapture: () -> ByteArray,
 ) {
     private val running = AtomicBoolean(false)
@@ -104,6 +108,7 @@ class AgentHttpServer(
             val assetPath = WORKFLOW_ASSET_PATH.matchEntire(request.path)
             val inventoryPath = WORKFLOW_INVENTORY_PATH.matchEntire(request.path)
             val audioPath = AUDIO_ARTIFACT_PATH.matchEntire(request.path)
+            val captureCropPath = CAPTURE_CROP_PATH.matchEntire(request.path)
             when {
                 request.method == "GET" && request.path == "/api/device" -> deviceHealth()
                 request.method == "GET" && request.path == "/api/capabilities/tts" -> HttpResponse.json(body = ttsGateway.capabilities().toJson())
@@ -116,6 +121,8 @@ class AgentHttpServer(
                     HttpResponse(200, "audio/wav", file.readBytes())
                 }
                 request.method == "POST" && request.path == "/api/screenshots" -> HttpResponse(200, "image/png", screenCapture())
+                request.method == "POST" && request.path == "/api/captures" -> capturePreview()
+                captureCropPath != null && request.method == "POST" -> cropCapture(captureCropPath.groupValues[1], request.body)
                 request.method == "POST" && request.path == "/api/vision/ocr-screen" -> HttpResponse.json(body = screenOcrGateway.recognizeScreen().toJson())
                 request.method == "POST" && request.path == "/api/input/tap" -> tapInput(request.body)
                 request.method == "POST" && request.path == "/api/ui-hierarchy" -> uiHierarchy()
@@ -171,6 +178,8 @@ class AgentHttpServer(
             }
         } catch (error: IllegalArgumentException) {
             HttpResponse.json(422, errorJson("VALIDATION_ERROR", error.message ?: "Invalid request"))
+        } catch (error: NoSuchElementException) {
+            HttpResponse.json(404, errorJson("CAPTURE_NOT_FOUND", error.message ?: "Capture is missing or expired"))
         } catch (error: IllegalStateException) {
             HttpResponse.json(409, errorJson("CONFLICT", error.message ?: "Operation cannot be completed"))
         }
@@ -204,6 +213,29 @@ class AgentHttpServer(
                 .put("silentUpdate", rootGranted))
         }
         return HttpResponse.json(body = body)
+    }
+
+    private fun capturePreview(): HttpResponse {
+        val preview = captureSessionStore.capturePreview()
+        return HttpResponse(200, preview.mimeType, preview.bytes, mapOf(
+            "X-AIPhone-Capture-Id" to preview.captureId,
+            "X-AIPhone-Source-Width" to preview.sourceSize.width.toString(),
+            "X-AIPhone-Source-Height" to preview.sourceSize.height.toString(),
+            "X-AIPhone-Preview-Width" to preview.previewSize.width.toString(),
+            "X-AIPhone-Preview-Height" to preview.previewSize.height.toString(),
+            "X-AIPhone-Capture-Expires-At" to preview.expiresAt.toString(),
+        ))
+    }
+
+    private fun cropCapture(captureId: String, bytes: ByteArray): HttpResponse {
+        val body = JSONObject(bytes.toString(Charsets.UTF_8))
+        val png = captureSessionStore.crop(captureId, NormalizedRect(
+            x = body.getDouble("x"),
+            y = body.getDouble("y"),
+            width = body.getDouble("width"),
+            height = body.getDouble("height"),
+        ))
+        return HttpResponse(200, "image/png", png)
     }
 
     private fun uiHierarchy(): HttpResponse {
@@ -281,6 +313,7 @@ class AgentHttpServer(
             append("Content-Length: ${response.body.size}\r\n")
             append("Cache-Control: no-store\r\n")
             append("X-Content-Type-Options: nosniff\r\n")
+            response.headers.forEach { (name, value) -> append("$name: $value\r\n") }
             append("Connection: close\r\n\r\n")
         }
         output.write(headers.toByteArray())
@@ -309,6 +342,7 @@ class AgentHttpServer(
         private val WORKFLOW_ASSET_PATH = Regex("^/api/workflows/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})/assets/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})$")
         private val WORKFLOW_INVENTORY_PATH = Regex("^/api/workflows/([a-zA-Z0-9][a-zA-Z0-9._-]{0,100})/inventory$")
         private val AUDIO_ARTIFACT_PATH = Regex("^/api/runs/audio/([0-9a-f-]{36})$")
+        private val CAPTURE_CROP_PATH = Regex("^/api/captures/([0-9a-f-]{36})/crop$")
         private const val PORT = 8765
         private const val MAX_BODY_BYTES = 16 * 1024 * 1024
         private const val MAX_AUDIO_RESPONSE_BYTES = 15 * 1024 * 1024L

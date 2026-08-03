@@ -396,7 +396,7 @@ class MainActivity : Activity() {
                 addView(stableButton, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(6) })
                 addView(nightlyButton, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginStart = dp(6) })
             })
-            updateStatus = label("Chưa kiểm tra bản cập nhật.", MUTED, 11f, false).apply { setPadding(0, dp(12), 0, 0) }
+            updateStatus = label("Kênh hiện tại: ${preferences.updateChannel.name.lowercase()}. Chưa kiểm tra bản cập nhật.", MUTED, 11f, false).apply { setPadding(0, dp(12), 0, 0) }
             addView(updateStatus)
             updateButton = actionButton("Kiểm tra bản cập nhật", primary = true, action = ::checkForUpdate)
             addView(updateButton)

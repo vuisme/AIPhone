@@ -3,7 +3,15 @@ package com.aiphone.agent
 import android.content.Context
 import com.aiphone.agent.callback.CallbackIdentity
 
-enum class UpdateChannel { STABLE, NIGHTLY }
+enum class UpdateChannel {
+    STABLE,
+    NIGHTLY;
+
+    companion object {
+        fun defaultForVersionName(versionName: String): UpdateChannel =
+            if (versionName.contains("nightly", ignoreCase = true)) NIGHTLY else STABLE
+    }
+}
 
 class AgentPreferences(context: Context) {
     private val values = context.getSharedPreferences("aiphone-agent", Context.MODE_PRIVATE)
@@ -13,7 +21,10 @@ class AgentPreferences(context: Context) {
         set(value) { values.edit().putBoolean("serviceEnabled", value).apply() }
 
     var updateChannel: UpdateChannel
-        get() = runCatching { UpdateChannel.valueOf(values.getString("updateChannel", UpdateChannel.STABLE.name)!!) }.getOrDefault(UpdateChannel.STABLE)
+        get() {
+            val default = UpdateChannel.defaultForVersionName(BuildConfig.VERSION_NAME)
+            return runCatching { UpdateChannel.valueOf(values.getString("updateChannel", default.name)!!) }.getOrDefault(default)
+        }
         set(value) { values.edit().putString("updateChannel", value.name).apply() }
 
     var callbackEnabled: Boolean

@@ -20,6 +20,15 @@ describe('workflow mutations', () => {
     expect(uniqueWorkflowId('Liên Quân', existing)).toBe('lien-quan-3')
   })
 
+  it('allows different accounts to use the same workflow display name without backend ID collisions', () => {
+    const first = uniqueWorkflowId('Default Workspace', [], 'owner-a')
+    const second = uniqueWorkflowId('Default Workspace', [], 'owner-b')
+
+    expect(first).toBe('user-owner-a-default-workspace')
+    expect(second).toBe('user-owner-b-default-workspace')
+    expect(first).not.toBe(second)
+  })
+
   it('replaces an Asset without creating duplicate IDs', () => {
     const workflow = createStarterWorkflow('Test', 'test')
     const first = upsertAsset(workflow, imageAsset('test'))

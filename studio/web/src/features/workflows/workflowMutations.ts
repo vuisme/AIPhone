@@ -1,12 +1,22 @@
 import type { AssetRecord, WorkflowDocument } from '../../contracts/workflow'
+import { accountScope } from '../../lib/accountScope'
 import { slugifyId } from '../../lib/ids'
 
-export function uniqueWorkflowId(name: string, workflows: WorkflowDocument[]): string {
-  const slug = slugifyId(name, 'workflow')
-  let id = slug
+export function uniqueWorkflowId(name: string, workflows: WorkflowDocument[], accountId?: string): string {
+  const prefix = accountId ? `${accountScope(accountId)}-` : ''
   let suffix = 2
-  while (workflows.some((workflow) => workflow.id === id)) id = `${slug}-${suffix++}`
+  const candidate = (postfix = '') => `${prefix}${slugifyId(name, 'workflow', 101 - prefix.length - postfix.length)}${postfix}`
+  let id = candidate()
+  while (workflows.some((workflow) => workflow.id === id)) id = candidate(`-${suffix++}`)
   return id
+}
+
+export function remapWorkflowId(workflow: WorkflowDocument, id: string): WorkflowDocument {
+  return {
+    ...workflow,
+    id,
+    assets: workflow.assets.map((asset) => ({ ...asset, workflowId: id })),
+  }
 }
 
 export function upsertAsset(workflow: WorkflowDocument, asset: AssetRecord): WorkflowDocument {

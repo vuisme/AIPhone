@@ -30,7 +30,8 @@ import { RunLogPanel } from './features/runs/RunLogPanel'
 import { WorkflowCanvas } from './features/workflows/WorkflowCanvas'
 import { WorkflowManager } from './features/workflows/WorkflowManager'
 import { WorkflowVariablesManager } from './features/workflows/WorkflowVariablesManager'
-import { isAssetReferenced, removeAsset, uniqueWorkflowId, upsertAsset } from './features/workflows/workflowMutations'
+import { isAssetReferenced, remapWorkflowId, removeAsset, uniqueWorkflowId, upsertAsset } from './features/workflows/workflowMutations'
+import { accountStorageKey } from './lib/accountScope'
 
 const LOCAL_WORKSPACES_KEY = 'aiphone.workflows.v2'
 const LEGACY_WORKFLOW_KEY = 'aiphone.workflow.v1'
@@ -45,15 +46,16 @@ const deploymentDependencies: DeploymentDependencies = {
   startRun: (workflowId, serial) => agentApi.startRun(workflowId, serial),
 }
 
-async function importDeviceWorkflows(serial: string): Promise<WorkflowDocument[]> {
+async function importDeviceWorkflows(serial: string, accountId: string): Promise<WorkflowDocument[]> {
   const summaries = await agentApi.getWorkflows(serial)
   const imported: WorkflowDocument[] = []
   for (const summary of summaries) {
-    let workflow = normalizeWorkflow(await agentApi.getWorkflow(summary.id, serial))
-    await projectApi.createWorkflow(workflow)
+    const sourceWorkflow = normalizeWorkflow(await agentApi.getWorkflow(summary.id, serial))
+    let workflow = remapWorkflowId(sourceWorkflow, uniqueWorkflowId(sourceWorkflow.id, imported, accountId))
+    workflow = normalizeWorkflow(await projectApi.createWorkflow(workflow))
     for (const asset of workflow.assets) {
       if (asset.type !== 'IMAGE') continue
-      const image = await agentApi.getAssetImage(workflow.id, asset.id, serial)
+      const image = await agentApi.getAssetImage(sourceWorkflow.id, asset.id, serial)
       const record = await projectApi.uploadAsset({ record: asset, imageBase64: await blobToDataUrl(image) })
       workflow = { ...workflow, assets: workflow.assets.map((item) => item.id === record.id ? record : item) }
     }
@@ -63,25 +65,32 @@ async function importDeviceWorkflows(serial: string): Promise<WorkflowDocument[]
   return imported
 }
 
-function loadLocalWorkflows(): WorkflowDocument[] {
+function starterWorkflowForAccount(accountId: string): WorkflowDocument {
+  return createStarterWorkflow('Default Workspace', uniqueWorkflowId('default-workspace', [], accountId))
+}
+
+function loadLocalWorkflows(accountId: string): WorkflowDocument[] {
   try {
-    const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY)
+    const stored = localStorage.getItem(accountStorageKey(LOCAL_WORKSPACES_KEY, accountId))
+      ?? (accountId === 'device-local' ? localStorage.getItem(LOCAL_WORKSPACES_KEY) : null)
     if (stored) {
       const workflows = (JSON.parse(stored) as unknown[]).map(normalizeWorkflow)
       if (workflows.length > 0) return workflows
     }
-    const legacy = localStorage.getItem(LEGACY_WORKFLOW_KEY)
+    const legacy = accountId === 'device-local' ? localStorage.getItem(LEGACY_WORKFLOW_KEY) : null
     if (legacy) return [normalizeWorkflow(JSON.parse(legacy))]
   } catch {
     // Fall through to a clean starter workflow.
   }
-  return [createStarterWorkflow()]
+  return [starterWorkflowForAccount(accountId)]
 }
 
 export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Promise<void> | void }) {
   const standalone = useMemo(isStandaloneStudio, [])
-  const [workflows, setWorkflows] = useState<WorkflowDocument[]>(loadLocalWorkflows)
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState(() => localStorage.getItem(LOCAL_SELECTED_KEY) || loadLocalWorkflows()[0]?.id || 'default-workflow')
+  const workflowStorageKey = accountStorageKey(LOCAL_WORKSPACES_KEY, user.id)
+  const selectedWorkflowStorageKey = accountStorageKey(LOCAL_SELECTED_KEY, user.id)
+  const [workflows, setWorkflows] = useState<WorkflowDocument[]>(() => loadLocalWorkflows(user.id))
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState(() => localStorage.getItem(selectedWorkflowStorageKey) || loadLocalWorkflows(user.id)[0]?.id || starterWorkflowForAccount(user.id).id)
   const [workspace, setWorkspace] = useState<'STUDIO' | 'WORKFLOWS' | 'VARIABLES' | 'ASSETS' | 'ADMIN'>('STUDIO')
   const [device, setDevice] = useState<DeviceHealth>()
   const [runtimeCapabilities, setRuntimeCapabilities] = useState<AndroidRuntimeCapabilities>()
@@ -161,7 +170,7 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
         if (cancelled) return
         setDevice(health)
         if (standalone && hostIsEmpty) {
-          const imported = await importDeviceWorkflows(selectedSerial)
+          const imported = await importDeviceWorkflows(selectedSerial, user.id)
           if (cancelled) return
           if (imported.length > 0) {
             setWorkflows(imported)
@@ -173,8 +182,8 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
           const summaries = await agentApi.getWorkflows()
           const remoteWorkflows = await Promise.all(summaries.map((summary) => agentApi.getWorkflow(summary.id)))
           const normalized = remoteWorkflows.map(normalizeWorkflow)
-          setWorkflows(normalized.length ? normalized : [createStarterWorkflow()])
-          setSelectedWorkflowId((current) => normalized.some((item) => item.id === current) ? current : normalized[0]?.id ?? 'default-workflow')
+          setWorkflows(normalized.length ? normalized : [starterWorkflowForAccount(user.id)])
+          setSelectedWorkflowId((current) => normalized.some((item) => item.id === current) ? current : normalized[0]?.id ?? starterWorkflowForAccount(user.id).id)
         }
       } catch (reason) {
         if (cancelled) return
@@ -186,7 +195,7 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
     }
     void load()
     return () => { cancelled = true }
-  }, [connectionRevision, hostIsEmpty, isPaired, selectedSerial, standalone])
+  }, [connectionRevision, hostIsEmpty, isPaired, selectedSerial, standalone, user.id])
 
   const refreshRuntimeCapabilities = useCallback(async (forceRefresh = false) => {
     if (!device || !isPaired) return
@@ -214,9 +223,9 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
   }, [device, isPaired, refreshRuntimeCapabilities])
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(workflows))
-    localStorage.setItem(LOCAL_SELECTED_KEY, selectedWorkflowId)
-  }, [selectedWorkflowId, workflows])
+    localStorage.setItem(workflowStorageKey, JSON.stringify(workflows))
+    localStorage.setItem(selectedWorkflowStorageKey, selectedWorkflowId)
+  }, [selectedWorkflowId, selectedWorkflowStorageKey, workflowStorageKey, workflows])
 
   useEffect(() => {
     if (run.state !== 'RUNNING') return
@@ -297,7 +306,7 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
   }
 
   const createWorkflow = async (name: string) => {
-    const next = createStarterWorkflow(name, uniqueWorkflowId(name, workflows))
+    const next = createStarterWorkflow(name, uniqueWorkflowId(name, workflows, user.id))
     setWorkflows((current) => [...current, next])
     setSelectedWorkflowId(next.id)
     setWorkspace('STUDIO')

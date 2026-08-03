@@ -3,6 +3,7 @@ import { canEditWorkflow, canManageWorkflow, canPairDevice, canUseDevice } from 
 import { conflict, forbidden, validation } from './errors.mjs'
 import { assertId, decodePng, parseWorkflow, sha256 } from './project-store.mjs'
 import { normalizeEmail } from './security.mjs'
+import { isAccountWorkflowId } from './workflow-identity.mjs'
 
 function mapUser(row) {
   if (!row) return undefined
@@ -221,6 +222,9 @@ export class StudioRepository {
 
   async createWorkflow(user, input) {
     const workflow = validateWorkflow(input)
+    if (!isAccountWorkflowId(user.id, workflow.id)) {
+      throw validation('New workflow ID must be scoped to the authenticated account')
+    }
     try {
       await this.database.query(
         `INSERT INTO studio_workflows(id, owner_user_id, document, updated_at)

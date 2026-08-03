@@ -16,6 +16,18 @@ test('StudioRepository reports invalid workflow documents as structured validati
   )
 })
 
+test('StudioRepository rejects new workflow IDs outside the authenticated account namespace', async () => {
+  const repository = new StudioRepository(database, {})
+
+  await assert.rejects(
+    repository.createWorkflow(
+      { id: 'owner-a', role: 'USER' },
+      { schemaVersion: 2, id: 'default-workspace', name: 'Default Workspace', revision: 1, nodes: [], edges: [], assets: [] },
+    ),
+    (error) => error instanceof HttpError && error.status === 422 && error.code === 'VALIDATION_ERROR',
+  )
+})
+
 test('StudioRepository serializes administrator changes before checking the final active admin', async () => {
   const queries = []
   const client = {

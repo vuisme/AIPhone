@@ -5,6 +5,7 @@ import { CredentialCipher } from './security.mjs'
 import { connectRedis, RedisSessionStore } from './session-store.mjs'
 import { StudioRepository } from './studio-repository.mjs'
 import { CallbackHub } from './callback-hub.mjs'
+import { scopeWorkflowDocument } from './workflow-identity.mjs'
 
 function credentialKey(environment) {
   const encoded = environment.AIPHONE_CREDENTIAL_KEY
@@ -27,7 +28,8 @@ async function importLegacyProjects(repository, projectStore, user) {
   let failed = 0
   for (const summary of summaries) {
     try {
-      const workflow = await projectStore.readWorkflow(summary.id)
+      const sourceWorkflow = await projectStore.readWorkflow(summary.id)
+      const workflow = scopeWorkflowDocument(user.id, sourceWorkflow)
       try {
         await repository.createWorkflow(user, workflow)
       } catch (error) {
@@ -36,7 +38,7 @@ async function importLegacyProjects(repository, projectStore, user) {
       for (const asset of workflow.assets || []) {
         if (asset.type !== 'IMAGE') continue
         try {
-          const image = await projectStore.readImageAsset(workflow.id, asset.id)
+          const image = await projectStore.readImageAsset(sourceWorkflow.id, asset.id)
           await repository.saveImageAsset(user, workflow.id, {
             record: asset,
             imageBase64: `data:image/png;base64,${image.toString('base64')}`,

@@ -418,6 +418,39 @@ export class StudioRepository {
     })
   }
 
+  async reclaimCallbackDevice(user, hello) {
+    return this.database.transaction(async (client) => {
+      const locked = await client.query(
+        `SELECT * FROM studio_devices
+         WHERE callback_device_id = $1 AND connection_mode = 'CLOUD_CALLBACK' FOR UPDATE`,
+        [hello.deviceId],
+      )
+      const row = locked.rows[0]
+      if (!row) throw conflict('CALLBACK_NOT_CLAIMED', 'Callback device is no longer paired')
+      const encrypted = {
+        ciphertext: row.callback_secret_ciphertext,
+        iv: row.callback_secret_iv,
+        authTag: row.callback_secret_auth_tag,
+      }
+      if (!this.credentialCipher.verifyCallbackSecret(encrypted, hello.deviceSecret, row.id, hello.deviceId)) {
+        throw forbidden('Callback device authentication failed')
+      }
+      if (row.owner_user_id !== user.id) {
+        await client.query('DELETE FROM studio_device_grants WHERE device_id = $1', [row.id])
+      }
+      const result = await client.query(
+        `UPDATE studio_devices SET owner_user_id = $2, model = COALESCE($3, model),
+         label = COALESCE(label, $3), last_seen_at = now(), updated_at = now()
+         WHERE callback_device_id = $1 AND connection_mode = 'CLOUD_CALLBACK' RETURNING *`,
+        [hello.deviceId, user.id, hello.metadata.model || null],
+      )
+      const device = mapDevice(result.rows[0])
+      delete device.credential
+      delete device.callbackDeviceId
+      return device
+    })
+  }
+
   async markCallbackSeen(serial, metadata = {}) {
     await this.database.query(
       `UPDATE studio_devices SET model = COALESCE($2, model), label = COALESCE(label, $2),

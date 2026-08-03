@@ -64,7 +64,7 @@ export class CallbackHub {
   }
 
   acceptConnection(socket) {
-    const connection = { socket, requests: new Map(), hello: undefined, serial: undefined, pairingTimer: undefined }
+    const connection = { socket, requests: new Map(), hello: undefined, serial: undefined, pairingTimer: undefined, repairingSerial: undefined }
     this.connections.add(connection)
     const helloTimer = setTimeout(() => closeSocket(socket, 1008, 'HELLO required'), HELLO_TIMEOUT_MS)
     helloTimer.unref?.()
@@ -95,13 +95,22 @@ export class CallbackHub {
     const hello = validateCallbackHello(input)
     connection.hello = hello
     const existing = await this.repository.authenticateCallbackDevice(hello.deviceId, hello.deviceSecret)
-    if (existing) {
+    if (existing && !hello.pairingRequested) {
       this.promote(connection, existing.serial)
       await this.repository.markCallbackSeen(existing.serial, hello.metadata)
       this.log('info', 'callback_device_connected', { serial: existing.serial, model: hello.metadata.model })
       connection.socket.send(JSON.stringify({ type: 'READY', serial: existing.serial, accountName: existing.ownerDisplayName }))
       return
     }
+    if (existing) {
+      connection.repairingSerial = existing.serial
+      const online = this.onlineBySerial.get(existing.serial)
+      if (online && online !== connection) closeSocket(online.socket, 1000, 'Device requested a new pairing session')
+    }
+    await this.beginPairing(connection, hello)
+  }
+
+  async beginPairing(connection, hello) {
     const previous = this.pendingByDeviceId.get(hello.deviceId)
     if (previous && previous !== connection) closeSocket(previous.socket, 1000, 'Replaced by a newer connection')
     this.pendingByDeviceId.set(hello.deviceId, connection)
@@ -127,6 +136,7 @@ export class CallbackHub {
       this.pendingByDeviceId.delete(connection.hello.deviceId)
       delete connection.hello.deviceSecret
       delete connection.hello.pairingCodeHash
+      delete connection.hello.pairingRequested
     }
   }
 
@@ -145,7 +155,9 @@ export class CallbackHub {
     if (!connection || connection.hello?.pairingCodeHash !== hash || connection.socket.readyState !== WebSocket.OPEN) {
       throw conflict('CALLBACK_OFFLINE', 'The callback device disconnected before pairing completed')
     }
-    const device = await this.repository.claimCallbackDevice(user, connection.hello)
+    const device = connection.repairingSerial
+      ? await this.repository.reclaimCallbackDevice(user, connection.hello)
+      : await this.repository.claimCallbackDevice(user, connection.hello)
     await this.redis.del(attemptsKey)
     this.promote(connection, device.serial)
     this.log('info', 'callback_device_paired', { serial: device.serial, ownerUserId: user.id })

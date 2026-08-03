@@ -34,3 +34,49 @@ test('StudioRepository serializes administrator changes before checking the fina
   assert.equal(queries[0], 'LOCK TABLE studio_users IN SHARE ROW EXCLUSIVE MODE')
   assert.match(queries[1], /FOR UPDATE/)
 })
+
+test('StudioRepository reassigns an authenticated callback device and clears old grants', async () => {
+  const queries = []
+  const existing = {
+    id: 'device-row',
+    serial: 'cloud:known',
+    label: 'Xiaomi',
+    model: 'Xiaomi',
+    owner_user_id: 'old-owner',
+    connection_mode: 'CLOUD_CALLBACK',
+    callback_device_id: 'known-device-installation',
+    callback_secret_ciphertext: 'ciphertext',
+    callback_secret_iv: 'iv',
+    callback_secret_auth_tag: 'tag',
+  }
+  const client = {
+    query: async (sql, params) => {
+      queries.push({ sql, params })
+      if (sql.startsWith('SELECT * FROM studio_devices')) return { rowCount: 1, rows: [existing] }
+      if (sql.startsWith('DELETE FROM studio_device_grants')) return { rowCount: 2, rows: [] }
+      if (sql.startsWith('UPDATE studio_devices')) return { rowCount: 1, rows: [{ ...existing, owner_user_id: params[1], model: params[2] }] }
+      throw new Error(`Unexpected query: ${sql}`)
+    },
+  }
+  const credentialCipher = {
+    verifyCallbackSecret: (record, candidate, deviceId, callbackDeviceId) => (
+      record.ciphertext === 'ciphertext' && candidate === 's'.repeat(43) && deviceId === 'device-row' && callbackDeviceId === 'known-device-installation'
+    ),
+  }
+  const repository = new StudioRepository({ transaction: (run) => run(client) }, credentialCipher)
+
+  const device = await repository.reclaimCallbackDevice(
+    { id: 'new-owner', displayName: 'New Owner' },
+    {
+      deviceId: 'known-device-installation',
+      deviceSecret: 's'.repeat(43),
+      metadata: { model: 'Xiaomi 15' },
+    },
+  )
+
+  assert.equal(device.id, 'device-row')
+  assert.equal(device.serial, 'cloud:known')
+  assert.equal(device.ownerUserId, 'new-owner')
+  assert.match(queries[0].sql, /FOR UPDATE/)
+  assert.match(queries[1].sql, /DELETE FROM studio_device_grants/)
+})

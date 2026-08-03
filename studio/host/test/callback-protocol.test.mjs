@@ -9,16 +9,21 @@ test('callback pairing codes normalize visual separators before hashing', () => 
 })
 
 test('callback HELLO accepts only bounded protocol credentials and metadata', () => {
-  const hello = validateCallbackHello({
+  const input = {
     type: 'HELLO',
     protocolVersion: 1,
     deviceId: 'device-installation-1234',
     deviceSecret: 'a'.repeat(43),
     pairingCodeHash: 'b'.repeat(64),
+    pairingRequested: true,
     metadata: { model: 'Xiaomi', androidVersion: '16', agentVersion: '0.3' },
-  })
+  }
+  const hello = validateCallbackHello(input)
   assert.equal(hello.metadata.model, 'Xiaomi')
-  assert.throws(() => validateCallbackHello({ ...hello, type: 'HELLO', protocolVersion: 2 }))
+  assert.equal(hello.pairingRequested, true)
+  assert.equal(validateCallbackHello({ ...input, pairingRequested: undefined }).pairingRequested, false)
+  assert.throws(() => validateCallbackHello({ ...input, pairingRequested: 'true' }))
+  assert.throws(() => validateCallbackHello({ ...input, protocolVersion: 2 }))
 })
 
 test('callback RESULT decodes binary bodies with a bounded status', () => {

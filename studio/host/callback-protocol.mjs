@@ -39,11 +39,15 @@ export function validateCallbackHello(input) {
   if (!DEVICE_ID_PATTERN.test(deviceId)) throw validation('Callback device ID is invalid')
   if (!SECRET_PATTERN.test(deviceSecret)) throw validation('Callback device secret is invalid')
   if (!/^[a-f0-9]{64}$/.test(codeHash)) throw validation('Callback pairing code hash is invalid')
+  if (input.pairingRequested !== undefined && typeof input.pairingRequested !== 'boolean') {
+    throw validation('Callback pairing request is invalid')
+  }
   const metadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata) ? input.metadata : {}
   return {
     deviceId,
     deviceSecret,
     pairingCodeHash: codeHash,
+    pairingRequested: input.pairingRequested === true,
     metadata: {
       model: boundedString(metadata.model, 'Device model', 120, { required: false }) || 'Android device',
       androidVersion: boundedString(metadata.androidVersion, 'Android version', 40, { required: false }),

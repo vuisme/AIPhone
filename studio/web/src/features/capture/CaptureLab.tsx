@@ -1,4 +1,4 @@
-import { Image, LoaderCircle, RefreshCw, ScanText, X } from 'lucide-react'
+import { Image, LoaderCircle, MoveDiagonal2, RefreshCw, ScanText, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { AssetUpload, CapturePreview, NormalizedRect, UiHierarchySnapshot } from '../../api/client'
 import type { ImageAssetRecord, UiSelectorAssetRecord } from '../../contracts/workflow'
@@ -6,6 +6,8 @@ import type { Size } from './crop'
 import { ImageAssetEditor } from './ImageAssetEditor'
 import { UiInspectorEditor } from './UiInspectorEditor'
 import { acquireCaptureSource, type CaptureSource } from './captureSource'
+import { CoordinatePicker } from './CoordinatePicker'
+import type { GestureMode, GestureSelection } from './coordinates'
 
 interface CaptureLabProps {
   workflowId: string
@@ -17,10 +19,15 @@ interface CaptureLabProps {
   onClose: () => void
   onSaveImage: (upload: AssetUpload) => Promise<void>
   onSaveSelector: (asset: UiSelectorAssetRecord, createNode: boolean) => Promise<void>
+  coordinatePicker?: {
+    mode: GestureMode
+    initialSelection?: GestureSelection
+    onApply: (selection: GestureSelection) => void
+  }
 }
 
 export function CaptureLab(props: CaptureLabProps) {
-  const [mode, setMode] = useState<'IMAGE' | 'TEXT'>('IMAGE')
+  const [mode, setMode] = useState<'IMAGE' | 'TEXT' | 'COORDINATE'>(props.coordinatePicker ? 'COORDINATE' : 'IMAGE')
   const [imageUrl, setImageUrl] = useState<string>()
   const [nativeSize, setNativeSize] = useState<Size>()
   const [hierarchy, setHierarchy] = useState<UiHierarchySnapshot>()
@@ -64,7 +71,7 @@ export function CaptureLab(props: CaptureLabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const changeMode = (nextMode: 'IMAGE' | 'TEXT') => {
+  const changeMode = (nextMode: 'IMAGE' | 'TEXT' | 'COORDINATE') => {
     setMode(nextMode)
     if (nextMode === 'TEXT' && !hierarchy) void refresh(nextMode)
   }
@@ -72,13 +79,14 @@ export function CaptureLab(props: CaptureLabProps) {
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="capture-modal capture-lab" role="dialog" aria-modal="true" aria-labelledby="capture-title">
-        <header><div><span>CAPTURE LAB</span><h2 id="capture-title">Asset ảnh & UI Inspector</h2></div><div className="capture-header-actions"><button className="secondary-button" onClick={() => void refresh()} disabled={isLoading}><RefreshCw size={15} className={isLoading ? 'spin' : ''} /> Làm mới</button><button className="icon-button" onClick={props.onClose} aria-label="Đóng"><X /></button></div></header>
-        <nav className="capture-mode-tabs" aria-label="Chế độ Capture Lab"><button className={mode === 'IMAGE' ? 'active' : ''} onClick={() => changeMode('IMAGE')}><Image size={16} /> Crop Asset ảnh</button><button className={mode === 'TEXT' ? 'active' : ''} onClick={() => changeMode('TEXT')}><ScanText size={16} /> Inspector text / XML</button></nav>
+        <header><div><span>CAPTURE LAB</span><h2 id="capture-title">Asset, UI & tọa độ thao tác</h2></div><div className="capture-header-actions"><button className="secondary-button" onClick={() => void refresh()} disabled={isLoading}><RefreshCw size={15} className={isLoading ? 'spin' : ''} /> Làm mới</button><button className="icon-button" onClick={props.onClose} aria-label="Đóng"><X /></button></div></header>
+        <nav className="capture-mode-tabs" aria-label="Chế độ Capture Lab">{props.coordinatePicker && <button className={mode === 'COORDINATE' ? 'active' : ''} onClick={() => changeMode('COORDINATE')}><MoveDiagonal2 size={16} /> Tọa độ / cử chỉ</button>}<button className={mode === 'IMAGE' ? 'active' : ''} onClick={() => changeMode('IMAGE')}><Image size={16} /> Crop Asset ảnh</button><button className={mode === 'TEXT' ? 'active' : ''} onClick={() => changeMode('TEXT')}><ScanText size={16} /> Inspector text / XML</button></nav>
         <div className="capture-body capture-lab__body">
           {isLoading && <div className="capture-loading"><LoaderCircle className="spin" /><span>Đang lấy dữ liệu trực tiếp từ điện thoại...</span></div>}
           {error && !isLoading && <div className="capture-empty"><strong>Không thể mở Capture Lab</strong><p>{error}</p><button className="secondary-button" onClick={() => void refresh()}>Thử lại</button></div>}
           {imageUrl && nativeSize && !isLoading && mode === 'IMAGE' && <ImageAssetEditor key={imageUrl} workflowId={props.workflowId} imageUrl={imageUrl} nativeSize={nativeSize} initialAsset={props.initialImageAsset} crop={captureSource?.mode === 'SESSION' ? (rect) => props.cropCapture(captureSource.captureId, rect) : undefined} onSave={props.onSaveImage} />}
           {imageUrl && nativeSize && hierarchy && !isLoading && mode === 'TEXT' && <UiInspectorEditor key={hierarchy.capturedAt} workflowId={props.workflowId} imageUrl={imageUrl} nativeSize={nativeSize} hierarchy={hierarchy} onSave={props.onSaveSelector} />}
+          {imageUrl && nativeSize && props.coordinatePicker && !isLoading && mode === 'COORDINATE' && <CoordinatePicker key={imageUrl} imageUrl={imageUrl} nativeSize={nativeSize} mode={props.coordinatePicker.mode} initialSelection={props.coordinatePicker.initialSelection} onApply={props.coordinatePicker.onApply} />}
           {imageUrl && <img className="capture-size-probe" src={imageUrl} alt="" onLoad={(event) => setNativeSize((current) => current ?? { width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} />}
         </div>
       </section>

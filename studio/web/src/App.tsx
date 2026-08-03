@@ -23,6 +23,7 @@ import { createStarterWorkflow, normalizeWorkflow, validateWorkflow, type AssetR
 import { AssetLibrary } from './features/assets/AssetLibrary'
 import { AdminPanel } from './features/admin/AdminPanel'
 import { CaptureLab } from './features/capture/CaptureLab'
+import { gestureConfig, type GestureMode, type GestureSelection } from './features/capture/coordinates'
 import { blobToDataUrl, deployWorkflow, type DeploymentDependencies } from './features/fleet/deployment'
 import { FleetDeployBar, type FleetDeviceProgress } from './features/fleet/FleetDeployBar'
 import { LiveViewPanel } from './features/live/LiveViewPanel'
@@ -37,6 +38,10 @@ const LOCAL_WORKSPACES_KEY = 'aiphone.workflows.v2'
 const LEGACY_WORKFLOW_KEY = 'aiphone.workflow.v1'
 const LOCAL_SELECTED_KEY = 'aiphone.selected-workflow'
 const DESTRUCTIVE_NODE_TYPES = new Set(['CREATE_CLONE', 'DELETE_CLONE', 'CLEAR_CLONE', 'FORCE_STOP_APP'])
+
+type CaptureTarget =
+  | { kind: 'ASSET'; workflowId: string; initialImageAsset?: ImageAssetRecord }
+  | { kind: 'COORDINATE'; workflowId: string; nodeId: string; mode: GestureMode; initialSelection: GestureSelection }
 
 const deploymentDependencies: DeploymentDependencies = {
   getInventory: (workflowId, serial) => agentApi.getWorkflowInventory(workflowId, serial),
@@ -105,7 +110,7 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
   const [run, setRun] = useState<RunStatus>({ id: 'idle', state: 'IDLE', iteration: 0 })
   const [isNodeTest, setIsNodeTest] = useState(false)
   const [isLogExpanded, setLogExpanded] = useState(false)
-  const [captureTarget, setCaptureTarget] = useState<{ workflowId: string; initialImageAsset?: ImageAssetRecord }>()
+  const [captureTarget, setCaptureTarget] = useState<CaptureTarget>()
   const [notice, setNotice] = useState<string>()
   const [isSaving, setIsSaving] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
@@ -305,6 +310,47 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
     setCaptureTarget(undefined)
   }
 
+  const openCoordinatePicker = (node: WorkflowNode) => {
+    if ((standalone && !selectedSerial) || !isPaired) {
+      setNotice('Hãy chọn và kết nối điện thoại trước khi lấy tọa độ')
+      return
+    }
+    if (node.type === 'TAP_POINT') {
+      setCaptureTarget({
+        kind: 'COORDINATE',
+        workflowId: workflow.id,
+        nodeId: node.id,
+        mode: 'TAP',
+        initialSelection: { start: { x: Number(node.config.x ?? 0), y: Number(node.config.y ?? 0) } },
+      })
+    } else if (node.type === 'SWIPE') {
+      setCaptureTarget({
+        kind: 'COORDINATE',
+        workflowId: workflow.id,
+        nodeId: node.id,
+        mode: 'SWIPE',
+        initialSelection: {
+          start: { x: Number(node.config.x1 ?? 0), y: Number(node.config.y1 ?? 0) },
+          end: { x: Number(node.config.x2 ?? 0), y: Number(node.config.y2 ?? 0) },
+        },
+      })
+    }
+  }
+
+  const applyCapturedCoordinates = (selection: GestureSelection) => {
+    if (!captureTarget || captureTarget.kind !== 'COORDINATE') return
+    const target = captureTarget
+    const capturedConfig = gestureConfig(target.mode, selection)
+    setWorkflows((current) => current.map((candidate) => candidate.id !== target.workflowId ? candidate : {
+      ...candidate,
+      nodes: candidate.nodes.map((node) => node.id === target.nodeId ? { ...node, config: { ...node.config, ...capturedConfig } } : node),
+      revision: candidate.revision + 1,
+      updatedAt: new Date().toISOString(),
+    }))
+    setCaptureTarget(undefined)
+    setNotice(target.mode === 'TAP' ? 'Đã cập nhật tọa độ chạm' : 'Đã cập nhật hướng vuốt')
+  }
+
   const createWorkflow = async (name: string) => {
     const next = createStarterWorkflow(name, uniqueWorkflowId(name, workflows, user.id))
     setWorkflows((current) => [...current, next])
@@ -472,7 +518,7 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
         <div className="brand-block"><div className="brand-mark">AI</div><div><span>ANDROID AUTOMATION</span><h1>Phone Studio</h1></div></div>
         <nav className="workspace-nav" aria-label="Khu vực làm việc"><button className={workspace === 'STUDIO' ? 'active' : ''} onClick={() => setWorkspace('STUDIO')}><ListTree size={16} /> Studio</button><button className={workspace === 'WORKFLOWS' ? 'active' : ''} onClick={() => setWorkspace('WORKFLOWS')}><Workflow size={16} /> Workflows</button><button className={workspace === 'VARIABLES' ? 'active' : ''} onClick={() => setWorkspace('VARIABLES')}><Variable size={16} /> Variables</button><button className={workspace === 'ASSETS' ? 'active' : ''} onClick={() => setWorkspace('ASSETS')}><Boxes size={16} /> Assets</button>{standalone && user.role === 'ADMIN' && <button className={workspace === 'ADMIN' ? 'active' : ''} onClick={() => setWorkspace('ADMIN')}><ShieldCheck size={16} /> Quản trị</button>}</nav>
         <button className="device-strip" onClick={() => { if (standalone) { setShowDevices(true); void scanDevices() } else setShowPairing(true) }} title={standalone ? 'Chọn điện thoại USB' : 'Ghép nối Android Agent'}><div className={`connection-dot ${device ? 'online' : ''}`} /><div><span>{standalone && targetSerials.length > 1 ? `${targetSerials.length} FLEET TARGETS` : device ? 'AGENT ONLINE' : (selectedSerial ? 'USB ĐÃ CHỌN' : 'CHƯA CHỌN MÁY')}</span><strong>{device ? `${device.model} · Android ${device.androidVersion}` : (selectedAdbDevice?.model ? `${selectedAdbDevice.model} · ${selectedSerial}` : selectedSerial || 'Bấm để quét USB')}</strong></div>{selectedSerial ? <Usb size={18} /> : <CloudOff size={18} />}</button>
-        <div className="top-actions">{standalone && <button className="toolbar-button" onClick={() => setShowLiveView(true)} disabled={!selectedSerial}><Monitor size={17} /> Live View</button>}<button className="toolbar-button" onClick={() => setCaptureTarget({ workflowId: workflow.id })} disabled={(standalone && !selectedSerial) || !isPaired}><Camera size={17} /> Capture Lab</button><button className="toolbar-button" onClick={() => void saveWorkflow()} disabled={isSaving}><Save size={17} /> Lưu</button>{run.state === 'RUNNING' ? <button className="run-button stop" onClick={() => void stopRun()}><CircleStop size={18} /> Dừng</button> : <button className="run-button" onClick={() => void startRun()} disabled={(standalone && !selectedSerial) || !isPaired}><Play size={18} fill="currentColor" /> Chạy</button>}{standalone && <><div className="account-chip"><span>{user.role}</span><strong>{user.displayName}</strong></div><button className="icon-button logout-button" onClick={() => void onLogout()} aria-label="Đăng xuất" title="Đăng xuất"><LogOut size={17} /></button></>}</div>
+        <div className="top-actions">{standalone && <button className="toolbar-button" onClick={() => setShowLiveView(true)} disabled={!selectedSerial}><Monitor size={17} /> Live View</button>}<button className="toolbar-button" onClick={() => setCaptureTarget({ kind: 'ASSET', workflowId: workflow.id })} disabled={(standalone && !selectedSerial) || !isPaired}><Camera size={17} /> Capture Lab</button><button className="toolbar-button" onClick={() => void saveWorkflow()} disabled={isSaving}><Save size={17} /> Lưu</button>{run.state === 'RUNNING' ? <button className="run-button stop" onClick={() => void stopRun()}><CircleStop size={18} /> Dừng</button> : <button className="run-button" onClick={() => void startRun()} disabled={(standalone && !selectedSerial) || !isPaired}><Play size={18} fill="currentColor" /> Chạy</button>}{standalone && <><div className="account-chip"><span>{user.role}</span><strong>{user.displayName}</strong></div><button className="icon-button logout-button" onClick={() => void onLogout()} aria-label="Đăng xuất" title="Đăng xuất"><LogOut size={17} /></button></>}</div>
       </header>
 
       <section className="status-rail"><div><Smartphone size={15} /><span>DISPLAY</span><strong>{device ? `${device.displayWidth} × ${device.displayHeight}` : '2608 × 1200'}</strong></div><div><Cpu size={15} /><span>QUYỀN THIẾT BỊ</span><strong className={device && (device.rootGranted || device.accessibilityReady) ? 'good' : 'warn'}>{device ? `${device.rootGranted ? 'ROOT' : 'NO ROOT'} · ${device.accessibilityReady ? 'TRỢ NĂNG ON' : 'TRỢ NĂNG OFF'}` : 'CHƯA KIỂM TRA'}</strong></div><div className="capability-status"><span>VOICE / AI</span><strong className={runtimeCapabilitiesError ? (ttsCapabilities?.available ? 'warn' : 'bad') : ttsCapabilities?.available ? 'good' : 'warn'}>{runtimeCapabilitiesLoading ? 'ĐANG QUÉT...' : ttsCapabilities ? `${ttsCapabilities.engines.length} ENGINE · ${voiceCount} MODEL · ${runtimeCapabilities?.aiServices.length ?? 0} SERVICE` : 'CHƯA QUÉT'}</strong><button onClick={() => void refreshRuntimeCapabilities(true)} disabled={!device || runtimeCapabilitiesLoading} aria-label="Quét lại Voice và AI services"><RefreshCw size={12} className={runtimeCapabilitiesLoading ? 'spin' : ''} /></button></div><div><span>WORKFLOW</span><strong>{workflow.name} · r{workflow.revision}</strong></div><div><span>VALIDATION</span><strong className={validation.valid ? 'good' : 'bad'}>{validation.valid ? 'SẴN SÀNG' : `${validation.issues.length} LỖI`}</strong></div><div className="run-state"><span>RUN</span><strong data-state={run.state}>{statusLabel}</strong></div></section>
@@ -480,15 +526,15 @@ export function App({ user, onLogout }: { user: StudioUser; onLogout: () => Prom
       {notice && <button className="notice-bar" onClick={() => setNotice(undefined)}>{notice}<span>Đóng</span></button>}
       <RunLogPanel run={run} expanded={isLogExpanded} onToggle={() => setLogExpanded((value) => !value)} />
 
-      {workspace === 'STUDIO' && <WorkflowCanvas workflow={workflow} activeNodeId={run.currentNodeId} onChange={changeWorkflow} onPlayNode={(node) => void playNode(node)} isNodeTestRunning={!isPaired || (isNodeTest && run.state === 'RUNNING')} ttsCapabilities={ttsCapabilities} ttsCapabilitiesLoading={runtimeCapabilitiesLoading} ttsCapabilitiesError={runtimeCapabilitiesError} onRefreshTtsCapabilities={() => void refreshRuntimeCapabilities(true)} />}
+      {workspace === 'STUDIO' && <WorkflowCanvas workflow={workflow} activeNodeId={run.currentNodeId} onChange={changeWorkflow} onPlayNode={(node) => void playNode(node)} onPickCoordinates={openCoordinatePicker} isNodeTestRunning={!isPaired || (isNodeTest && run.state === 'RUNNING')} ttsCapabilities={ttsCapabilities} ttsCapabilitiesLoading={runtimeCapabilitiesLoading} ttsCapabilitiesError={runtimeCapabilitiesError} onRefreshTtsCapabilities={() => void refreshRuntimeCapabilities(true)} />}
       {workspace === 'WORKFLOWS' && <WorkflowManager workflows={workflows} selectedId={workflow.id} onSelect={(id) => { setSelectedWorkflowId(id); setWorkspace('STUDIO') }} onCreate={(name) => void createWorkflow(name)} onRename={(id, name) => void renameWorkflow(id, name)} onDelete={(id) => void deleteWorkflow(id)} />}
       {workspace === 'VARIABLES' && <WorkflowVariablesManager workflow={workflow} onChange={changeWorkflow} />}
-      {workspace === 'ASSETS' && <AssetLibrary workflows={workflows} selectedWorkflowId={workflow.id} onSelectWorkflow={setSelectedWorkflowId} onCapture={(workflowId) => setCaptureTarget({ workflowId })} onReplace={(asset) => setCaptureTarget({ workflowId: asset.workflowId, initialImageAsset: asset })} onRename={(asset, name) => void renameAsset(asset, name)} onDelete={(asset) => void deleteAsset(asset)} getAssetImage={standalone ? projectApi.getAssetImage : agentApi.getAssetImage} />}
+      {workspace === 'ASSETS' && <AssetLibrary workflows={workflows} selectedWorkflowId={workflow.id} onSelectWorkflow={setSelectedWorkflowId} onCapture={(workflowId) => setCaptureTarget({ kind: 'ASSET', workflowId })} onReplace={(asset) => setCaptureTarget({ kind: 'ASSET', workflowId: asset.workflowId, initialImageAsset: asset })} onRename={(asset, name) => void renameAsset(asset, name)} onDelete={(asset) => void deleteAsset(asset)} getAssetImage={standalone ? projectApi.getAssetImage : agentApi.getAssetImage} />}
       {workspace === 'ADMIN' && standalone && user.role === 'ADMIN' && <AdminPanel currentUser={user} />}
 
       <footer className="footer-strip"><span>AIPhone Studio v0.2</span><span>{workflow.nodes.length} nodes · {workflow.edges.length} edges · {workflow.assets.length} Assets</span><span>{selectedSerial ? `USB: ${selectedSerial}` : 'Target: chưa chọn điện thoại'}</span></footer>
 
-      {captureTarget && <CaptureLab workflowId={captureTarget.workflowId} initialImageAsset={captureTarget.initialImageAsset} capture={agentApi.captureScreenshot} capturePreview={agentApi.capturePreview} cropCapture={agentApi.cropCapture} inspect={agentApi.getUiHierarchy} onClose={() => setCaptureTarget(undefined)} onSaveImage={saveImageAsset} onSaveSelector={saveSelectorAsset} />}
+      {captureTarget && <CaptureLab workflowId={captureTarget.workflowId} initialImageAsset={captureTarget.kind === 'ASSET' ? captureTarget.initialImageAsset : undefined} coordinatePicker={captureTarget.kind === 'COORDINATE' ? { mode: captureTarget.mode, initialSelection: captureTarget.initialSelection, onApply: applyCapturedCoordinates } : undefined} capture={agentApi.captureScreenshot} capturePreview={agentApi.capturePreview} cropCapture={agentApi.cropCapture} inspect={agentApi.getUiHierarchy} onClose={() => setCaptureTarget(undefined)} onSaveImage={saveImageAsset} onSaveSelector={saveSelectorAsset} />}
       {showLiveView && selectedSerial && <LiveViewPanel serial={selectedSerial} onClose={() => setShowLiveView(false)} />}
       {showDevices && standalone && <div className="modal-backdrop device-backdrop"><section className="device-card" role="dialog" aria-modal="true" aria-labelledby="device-title"><header><div><span>DEVICE FLEET / USB + CLOUD</span><h2 id="device-title">Chọn các điện thoại đích</h2></div><button className="icon-button" onClick={() => setShowDevices(false)} aria-label="Đóng"><X size={18} /></button></header><p>Chỉ hiện thiết bị chưa có chủ hoặc đã được cấp cho tài khoản <strong>{user.displayName}</strong>. Credential đã lưu không được gửi về trình duyệt.</p><div className="device-list">{adbDevices.length === 0 && <div className="device-empty"><Usb size={24} /><strong>Chưa tìm thấy thiết bị được phép dùng</strong><span>Kết nối USB hoặc thêm máy bằng mã Cloud Callback.</span></div>}{adbDevices.map((candidate) => <button key={candidate.serial} className={`device-option ${targetSerials.includes(candidate.serial) ? 'selected' : ''}`} disabled={candidate.state !== 'device'} onClick={() => toggleTargetDevice(candidate.serial)}><span className="device-check">{targetSerials.includes(candidate.serial) ? '✓' : ''}</span><span><strong>{candidate.label || candidate.model || candidate.serial}</strong><small>{candidate.connectionMode === 'CLOUD_CALLBACK' ? 'Cloud Callback' : 'USB'} · {candidate.paired ? 'đã xác thực' : candidate.canPair ? 'cần pairing token' : 'được cấp · chờ chủ pairing'}</small></span><em data-state={candidate.state}>{candidate.serial === selectedSerial ? 'Máy chính' : candidate.state === 'device' ? 'Sẵn sàng' : candidate.state}</em></button>)}</div><footer><button className="secondary-button" onClick={() => void scanDevices()} disabled={isScanning}><RefreshCw size={16} className={isScanning ? 'spin' : ''} /> {isScanning ? 'Đang quét...' : 'Quét lại'}</button><button className="secondary-button" onClick={() => setShowCallbackPairing(true)}><Cloud size={16} /> Thêm máy Cloud</button>{selectedSerial && isPaired && selectedCanPair && <button className="secondary-button danger-text" onClick={() => void forgetCredential()}>Quên token</button>}<button className="primary-button" onClick={() => { setShowDevices(false); if (selectedSerial && !deviceIsPaired(selectedSerial) && selectedCanPair) setShowPairing(true) }}>Dùng {targetSerials.length} máy</button></footer></section></div>}
       {showPairing && <div className="modal-backdrop pairing-backdrop"><section className="pairing-card" role="dialog" aria-modal="true" aria-labelledby="pairing-title"><span>ENCRYPTED DEVICE CREDENTIAL</span><h2 id="pairing-title">Ghép nối với Android Agent</h2><p>Nhập pairing token hiển thị trong app AIPhone Agent. Backend mã hóa token bằng AES-256-GCM, gắn với đúng thiết bị và tài khoản được phép; browser không thể đọc lại token.</p><input id="pairing-token" name="pairing-token" aria-label="Pairing token" autoFocus value={pairingInput} onChange={(event) => setPairingInput(event.target.value)} placeholder="xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx" /><div><button className="secondary-button" onClick={() => setShowPairing(false)}>Để sau</button><button className="primary-button" disabled={pairingInput.replace(/\s/g, '').length < 16 || !selectedCanPair} onClick={() => void connectWithToken()}>Mã hóa & kết nối</button></div></section></div>}

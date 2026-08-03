@@ -29,6 +29,7 @@ interface WorkflowCanvasProps {
   activeNodeId?: string
   onChange: (workflow: WorkflowDocument) => void
   onPlayNode: (node: WorkflowNode) => void
+  onPickCoordinates: (node: WorkflowNode) => void
   isNodeTestRunning?: boolean
   ttsCapabilities?: TtsCapabilities
   ttsCapabilitiesLoading?: boolean
@@ -57,7 +58,7 @@ function toWorkflowNode(node: Node<WorkflowNodeData>): WorkflowNode {
   }
 }
 
-export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, isNodeTestRunning = false, ttsCapabilities, ttsCapabilitiesLoading, ttsCapabilitiesError, onRefreshTtsCapabilities }: WorkflowCanvasProps) {
+export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, onPickCoordinates, isNodeTestRunning = false, ttsCapabilities, ttsCapabilitiesLoading, ttsCapabilitiesError, onRefreshTtsCapabilities }: WorkflowCanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const lastPublishedWorkflow = useRef<WorkflowDocument | undefined>(undefined)
   const [instance, setInstance] = useState<ReactFlowInstance<Node<WorkflowNodeData>, Edge>>()
@@ -295,7 +296,7 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
               <strong>{selectedDefinition.label}</strong>
               <code>{selectedNode.id}</code>
             </div>
-            <NodeInspectorFields definition={selectedDefinition} nodeType={selectedNode.data.nodeType} config={selectedNode.data.config} assets={workflow.assets} variables={variables} ttsCapabilities={ttsCapabilities} ttsCapabilitiesLoading={ttsCapabilitiesLoading} ttsCapabilitiesError={ttsCapabilitiesError} onRefreshTtsCapabilities={onRefreshTtsCapabilities} onChange={updateConfig} />
+            <NodeInspectorFields definition={selectedDefinition} nodeType={selectedNode.data.nodeType} config={selectedNode.data.config} assets={workflow.assets} variables={variables} ttsCapabilities={ttsCapabilities} ttsCapabilitiesLoading={ttsCapabilitiesLoading} ttsCapabilitiesError={ttsCapabilitiesError} onRefreshTtsCapabilities={onRefreshTtsCapabilities} onPickCoordinates={() => onPickCoordinates(toWorkflowNode(selectedNode))} onChange={updateConfig} />
           </div>
         )}
       </aside>

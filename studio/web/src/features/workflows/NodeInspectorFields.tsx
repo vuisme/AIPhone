@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react'
+import { Crosshair, MoveDiagonal2, RefreshCw } from 'lucide-react'
 import type { AssetRecord, NodeType, WorkflowValueType } from '../../contracts/workflow'
 import type { TtsCapabilities } from '../../api/client'
 import type { NodeDefinition, NodeField } from './nodeCatalog'
@@ -15,6 +15,7 @@ interface NodeInspectorFieldsProps {
   ttsCapabilitiesLoading?: boolean
   ttsCapabilitiesError?: string
   onRefreshTtsCapabilities?: () => void
+  onPickCoordinates?: () => void
   onChange: (key: string, value: unknown) => void
 }
 
@@ -127,6 +128,8 @@ function fieldControl(field: NodeField, props: NodeInspectorFieldsProps) {
 export function NodeInspectorFields(props: NodeInspectorFieldsProps) {
   const voiceCount = props.ttsCapabilities?.engines.reduce((total, engine) => total + engine.voices.length, 0) ?? 0
   return <>
+    {props.nodeType === 'TAP_POINT' && <button type="button" className="coordinate-picker-launch" onClick={props.onPickCoordinates} disabled={!props.onPickCoordinates} aria-label="Lấy điểm chạm từ Capture Lab"><Crosshair size={16} /><span><strong>Lấy tọa độ từ màn hình</strong><small>Mở Capture Lab và bấm một điểm</small></span></button>}
+    {props.nodeType === 'SWIPE' && <button type="button" className="coordinate-picker-launch" onClick={props.onPickCoordinates} disabled={!props.onPickCoordinates} aria-label="Lấy hướng vuốt từ Capture Lab"><MoveDiagonal2 size={16} /><span><strong>Lấy hướng vuốt từ màn hình</strong><small>Kéo điểm đầu đến điểm cuối trong Capture Lab</small></span></button>}
     {props.nodeType === 'TTS_SPEAK' && <section className="tts-capability-summary" aria-live="polite">
       <div><span>MODEL SOURCE</span><strong>{props.ttsCapabilities ? `${props.ttsCapabilities.engines.length} engine · ${voiceCount} voice trên máy đang chọn` : 'Chưa có dữ liệu từ điện thoại'}</strong>{props.ttsCapabilitiesError && <small>{props.ttsCapabilitiesError}</small>}</div>
       <button type="button" onClick={props.onRefreshTtsCapabilities} disabled={props.ttsCapabilitiesLoading || !props.onRefreshTtsCapabilities} aria-label="Quét lại TTS model trên điện thoại"><RefreshCw size={13} className={props.ttsCapabilitiesLoading ? 'spin' : ''} /></button>

@@ -1,7 +1,9 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nodeDefinition } from './nodeCatalog'
 import { NodeInspectorFields } from './NodeInspectorFields'
+
+afterEach(cleanup)
 
 describe('TTS inspector', () => {
   it('shows engines and compatible local or cloud voice models from the selected phone', () => {
@@ -36,5 +38,42 @@ describe('TTS inspector', () => {
     expect(screen.getByText('1 engine · 2 voice trên máy đang chọn')).toBeInTheDocument()
     expect(screen.getByLabelText('Quét lại TTS model trên điện thoại')).toBeInTheDocument()
     expect(screen.getByLabelText(/Nội dung đọc/)).toBeInTheDocument()
+  })
+})
+
+describe('coordinate inspector actions', () => {
+  it.each([
+    ['TAP_POINT', 'Lấy điểm chạm từ Capture Lab'],
+    ['SWIPE', 'Lấy hướng vuốt từ Capture Lab'],
+  ] as const)('opens Capture Lab for %s', (nodeType, accessibleName) => {
+    const definition = nodeDefinition(nodeType)
+    const onPickCoordinates = vi.fn()
+    render(<NodeInspectorFields
+      definition={definition}
+      nodeType={nodeType}
+      config={definition.defaultConfig}
+      assets={[]}
+      variables={[]}
+      onPickCoordinates={onPickCoordinates}
+      onChange={vi.fn()}
+    />)
+
+    screen.getByRole('button', { name: accessibleName }).click()
+    expect(onPickCoordinates).toHaveBeenCalledOnce()
+  })
+
+  it('does not show coordinate capture for unrelated nodes', () => {
+    const definition = nodeDefinition('DELAY')
+    const view = render(<NodeInspectorFields
+      definition={definition}
+      nodeType="DELAY"
+      config={definition.defaultConfig}
+      assets={[]}
+      variables={[]}
+      onPickCoordinates={vi.fn()}
+      onChange={vi.fn()}
+    />)
+
+    expect(view.container.querySelector('.coordinate-picker-launch')).toBeNull()
   })
 })

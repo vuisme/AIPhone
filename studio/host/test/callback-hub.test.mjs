@@ -39,13 +39,14 @@ test('CallbackHub claims an online device with a one-time pairing code', async (
   const repository = {
     authenticateCallbackDevice: async () => undefined,
     claimCallbackDevice: async (user, hello) => ({ serial: `cloud:${hello.deviceId}`, id: 'device-row', ownerDisplayName: user.displayName }),
+    reclaimCallbackDevice: async () => { throw new Error('An unauthenticated device must not enter the reclaim path') },
   }
   const hub = new CallbackHub({ repository, redis, log: () => undefined })
   const socket = new FakeSocket()
   hub.acceptConnection(socket)
   socket.emit('message', Buffer.from(JSON.stringify({
     type: 'HELLO', protocolVersion: 1, deviceId: 'device-installation-1234', deviceSecret: 's'.repeat(43),
-    pairingCodeHash: pairingCodeHash('ABCD-EFGH-23'), metadata: { model: 'Xiaomi' },
+    pairingCodeHash: pairingCodeHash('ABCD-EFGH-23'), pairingRequested: true, metadata: { model: 'Xiaomi' },
   })))
   await nextTurn()
   assert.equal(socket.messages[0].type, 'PAIRING_REQUIRED')

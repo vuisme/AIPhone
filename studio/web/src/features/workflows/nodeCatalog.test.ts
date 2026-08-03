@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { WORKFLOW_NODE_TYPES } from '../../contracts/workflow'
-import { NODE_CATALOG, nodeDefinition, nodeRequirement, nodeRequirementLabel } from './nodeCatalog'
+import { NODE_CATALOG, nodeDefinition, nodeRequirement, nodeRequirementLabel, rootBadgeLabel } from './nodeCatalog'
 
 describe('TAP_IMAGE defaults', () => {
   it('verifies the tap and retries before reporting success', () => {
@@ -70,6 +70,14 @@ describe('node capability matrix', () => {
     expect(nodeRequirement('FORCE_STOP_APP', { userId: 0 })).toBe('ROOT')
     expect(nodeRequirement('LAUNCH_APP', { userId: 0 })).toBe('NONE')
     expect(nodeRequirement('LAUNCH_APP', { userId: 999 })).toBe('ROOT')
+  })
+
+  it('shows a compact ROOT badge only when the current node configuration requires root', () => {
+    expect(rootBadgeLabel('CREATE_CLONE', { userId: 999 })).toBe('ROOT')
+    expect(rootBadgeLabel('WAIT_IMAGE', {})).toBeUndefined()
+    expect(rootBadgeLabel('TAP_TEXT', {})).toBeUndefined()
+    expect(rootBadgeLabel('LAUNCH_APP', { userId: 0 })).toBeUndefined()
+    expect(rootBadgeLabel('LAUNCH_APP', { userId: 999 })).toBe('ROOT')
   })
 
   it('requires Accessibility specifically for text matching', () => {

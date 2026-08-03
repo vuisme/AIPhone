@@ -138,3 +138,7 @@ export function nodeRequirementLabel(type: NodeType, config: Record<string, unkn
     ROOT: 'ROOT',
   }[nodeRequirement(type, config)]
 }
+
+export function rootBadgeLabel(type: NodeType, config: Record<string, unknown>): 'ROOT' | undefined {
+  return nodeRequirement(type, config) === 'ROOT' ? 'ROOT' : undefined
+}

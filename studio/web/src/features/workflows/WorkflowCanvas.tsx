@@ -18,7 +18,7 @@ import {
 import { Link2Off } from 'lucide-react'
 import type { NodeType, WorkflowDocument, WorkflowNode } from '../../contracts/workflow'
 import type { TtsCapabilities } from '../../api/client'
-import { NODE_CATALOG, nodeDefinition, nodeRequirement, nodeRequirementLabel, type NodeCategory } from './nodeCatalog'
+import { NODE_CATALOG, nodeDefinition, type NodeCategory } from './nodeCatalog'
 import { NodeInspectorFields } from './NodeInspectorFields'
 import { WorkflowNodeCard, type WorkflowNodeData } from './WorkflowNodeCard'
 import { removeEdgeById, toggleNodeDisabled } from './workflowGraph'
@@ -219,7 +219,7 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
                     title="Kéo vào canvas hoặc nhấp đúp để thêm"
                   >
                     <span style={{ background: item.accent }}><Icon size={16} /></span>
-                    <div><strong>{item.label}</strong><small>{item.description}</small><em className="capability-badge" data-requirement={nodeRequirement(item.type, item.defaultConfig)}>{nodeRequirementLabel(item.type, item.defaultConfig)}</em></div>
+                    <div><strong>{item.label}</strong><small>{item.description}</small></div>
                   </button>
                 )
               })}
@@ -294,7 +294,6 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, i
             <div className="inspector-title" style={{ borderColor: selectedDefinition.accent }}>
               <strong>{selectedDefinition.label}</strong>
               <code>{selectedNode.id}</code>
-              <em className="capability-badge" data-requirement={nodeRequirement(selectedNode.data.nodeType, selectedNode.data.config)}>{nodeRequirementLabel(selectedNode.data.nodeType, selectedNode.data.config)}</em>
             </div>
             <NodeInspectorFields definition={selectedDefinition} nodeType={selectedNode.data.nodeType} config={selectedNode.data.config} assets={workflow.assets} variables={variables} ttsCapabilities={ttsCapabilities} ttsCapabilitiesLoading={ttsCapabilitiesLoading} ttsCapabilitiesError={ttsCapabilitiesError} onRefreshTtsCapabilities={onRefreshTtsCapabilities} onChange={updateConfig} />
           </div>

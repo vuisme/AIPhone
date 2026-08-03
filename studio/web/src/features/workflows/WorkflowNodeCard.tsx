@@ -2,7 +2,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Eye, EyeOff, GitBranch, Play, Trash2 } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import type { NodeType } from '../../contracts/workflow'
-import { nodeDefinition, nodeRequirement, nodeRequirementLabel } from './nodeCatalog'
+import { nodeDefinition, rootBadgeLabel } from './nodeCatalog'
 
 export interface WorkflowNodeData extends Record<string, unknown> {
   nodeType: NodeType
@@ -22,9 +22,10 @@ export function WorkflowNodeCard({ id, data, selected }: NodeProps) {
   const outcomes = definition.outcomes ?? []
   const isBranch = outcomes.length > 0
   const isTerminal = nodeData.nodeType === 'SUCCESS' || nodeData.nodeType === 'FAILURE'
+  const rootBadge = rootBadgeLabel(nodeData.nodeType, nodeData.config)
 
   return (
-    <div className={`flow-node ${selected ? 'is-selected' : ''} ${nodeData.isActive ? 'is-active' : ''} ${nodeData.disabled ? 'is-disabled' : ''}`} style={{ '--node-accent': definition.accent } as CSSProperties}>
+    <div className={`flow-node ${selected ? 'is-selected' : ''} ${nodeData.isActive ? 'is-active' : ''} ${nodeData.disabled ? 'is-disabled' : ''} ${rootBadge ? 'has-root' : ''}`} style={{ '--node-accent': definition.accent } as CSSProperties}>
       {nodeData.nodeType !== 'START' && <Handle type="target" position={Position.Left} />}
       <div className="flow-node__actions nodrag nopan" onPointerDown={(event) => event.stopPropagation()}>
         <button title="Play node" aria-label="Play node" disabled={nodeData.isNodeTestRunning} onClick={(event) => { event.stopPropagation(); nodeData.onPlay?.(id) }}><Play size={12} fill="currentColor" /></button>
@@ -39,8 +40,8 @@ export function WorkflowNodeCard({ id, data, selected }: NodeProps) {
       <div className="flow-node__copy">
         <strong>{definition.label}</strong>
         <span>{definition.description}</span>
-        <em className="capability-badge" data-requirement={nodeRequirement(nodeData.nodeType, nodeData.config)}>{nodeRequirementLabel(nodeData.nodeType, nodeData.config)}</em>
       </div>
+      {rootBadge && <span className="flow-node__root-badge" title="Yêu cầu quyền root">{rootBadge}</span>}
       {isBranch && <GitBranch className="flow-node__branch" size={15} />}
       {!isTerminal && !isBranch && <Handle type="source" position={Position.Right} />}
       {isBranch && (

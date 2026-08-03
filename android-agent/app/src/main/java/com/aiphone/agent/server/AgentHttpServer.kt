@@ -49,6 +49,7 @@ class AgentHttpServer(
     private val ttsGateway: TtsGateway,
     private val runtimeCapabilityGateway: RuntimeCapabilityGateway,
     private val screenOcrGateway: ScreenOcrGateway,
+    private val screenCapture: () -> ByteArray,
 ) {
     private val running = AtomicBoolean(false)
     private val workers = Executors.newFixedThreadPool(4)
@@ -114,7 +115,7 @@ class AgentHttpServer(
                     require(file.length() <= MAX_AUDIO_RESPONSE_BYTES) { "Audio artifact is too large" }
                     HttpResponse(200, "audio/wav", file.readBytes())
                 }
-                request.method == "POST" && request.path == "/api/screenshots" -> HttpResponse(200, "image/png", RootGateway.captureScreen())
+                request.method == "POST" && request.path == "/api/screenshots" -> HttpResponse(200, "image/png", screenCapture())
                 request.method == "POST" && request.path == "/api/vision/ocr-screen" -> HttpResponse.json(body = screenOcrGateway.recognizeScreen().toJson())
                 request.method == "POST" && request.path == "/api/input/tap" -> tapInput(request.body)
                 request.method == "POST" && request.path == "/api/ui-hierarchy" -> uiHierarchy()

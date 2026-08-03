@@ -2,16 +2,21 @@ package com.aiphone.agent.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.graphics.Bitmap
 import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 data class UiClickResult(
     val found: Boolean,
@@ -124,6 +129,46 @@ class AIPhoneAccessibilityService : AccessibilityService() {
         durationMs.coerceIn(1, 60_000),
     )
 
+    @Synchronized
+    fun captureScreenshotPng(): ByteArray {
+        val screenshot = AtomicReference<ScreenshotResult?>()
+        val errorCode = AtomicInteger(0)
+        val completed = CountDownLatch(1)
+        takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+            override fun onSuccess(result: ScreenshotResult) {
+                screenshot.set(result)
+                completed.countDown()
+            }
+
+            override fun onFailure(code: Int) {
+                errorCode.set(code)
+                completed.countDown()
+            }
+        })
+        check(completed.await(SCREENSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            "Accessibility screenshot timed out"
+        }
+        val result = screenshot.get() ?: error(accessibilityScreenshotError(errorCode.get()))
+        val hardwareBuffer = result.hardwareBuffer
+        val bitmap = try {
+            Bitmap.wrapHardwareBuffer(hardwareBuffer, result.colorSpace)
+                ?.copy(Bitmap.Config.ARGB_8888, false)
+                ?: error("Accessibility screenshot returned an unsupported image")
+        } finally {
+            hardwareBuffer.close()
+        }
+        return try {
+            ByteArrayOutputStream().use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                    "Accessibility screenshot could not be encoded as PNG"
+                }
+                output.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     private fun dispatchPath(path: Path, durationMs: Int): Boolean {
         val completed = CountDownLatch(1)
         var succeeded = false
@@ -165,5 +210,15 @@ class AIPhoneAccessibilityService : AccessibilityService() {
         @Volatile var instance: AIPhoneAccessibilityService? = null
             private set
         private const val MAX_NODES = 5_000
+        private const val SCREENSHOT_TIMEOUT_SECONDS = 10L
+
+        private fun accessibilityScreenshotError(code: Int): String = when (code) {
+            ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR -> "Android could not capture the screen"
+            ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS -> "AIPhone Accessibility does not have screenshot access"
+            ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT -> "Android screenshot requests are too frequent; retry in a moment"
+            ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY -> "Android rejected the selected display"
+            ERROR_TAKE_SCREENSHOT_SECURE_WINDOW -> "The current app blocks screenshots with a secure window"
+            else -> "Accessibility screenshot failed with Android error $code"
+        }
     }
 }

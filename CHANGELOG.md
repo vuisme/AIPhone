@@ -39,6 +39,7 @@
 
 ### Fixed
 
+- Allow Cloud Capture Lab screenshots on non-root Android 11+ devices through the enabled AIPhone Accessibility service.
 - Escape workflow variable template braces for Android's regex runtime and include nested exception causes in on-phone run logs.
 - Allow Cloud Callback commands to reach the Agent's authenticated HTTP server over the app-internal `127.0.0.1` loopback while keeping external cleartext traffic disabled.
 - Capture the primary physical display explicitly on multi-display Xiaomi devices.

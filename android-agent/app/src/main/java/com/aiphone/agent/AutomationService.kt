@@ -14,10 +14,13 @@ import com.aiphone.agent.workflow.WorkflowExecutor
 import com.aiphone.agent.workflow.AndroidTtsGateway
 import com.aiphone.agent.workflow.AndroidRuntimeCapabilityGateway
 import com.aiphone.agent.accessibility.AccessibilityController
+import com.aiphone.agent.accessibility.AIPhoneAccessibilityService
 import com.aiphone.agent.root.CommandResult
+import com.aiphone.agent.root.RootGateway
 import com.aiphone.agent.callback.CallbackStatus
 import com.aiphone.agent.callback.CloudCallbackClient
 import com.aiphone.agent.vision.AndroidMlKitScreenOcrGateway
+import com.aiphone.agent.vision.ScreenCaptureGateway
 
 class AutomationService : Service() {
     private var server: AgentHttpServer? = null
@@ -36,13 +39,35 @@ class AutomationService : Service() {
         val ttsGateway = AndroidTtsGateway(this)
         val runtimeCapabilityGateway = AndroidRuntimeCapabilityGateway(this, ttsGateway)
         val screenOcrGateway = AndroidMlKitScreenOcrGateway()
+        val screenCaptureGateway = ScreenCaptureGateway(
+            rootCapture = {
+                check(RootGateway.isRootGranted()) { "Root access is unavailable" }
+                RootGateway.captureScreen()
+            },
+            accessibilityCapture = {
+                check(AccessibilityController.ensureEnabled(this)) {
+                    "Enable AIPhone UI Inspector in Android Accessibility settings"
+                }
+                val accessibility = AIPhoneAccessibilityService.instance
+                    ?: error("AIPhone UI Inspector is not ready; retry in a moment")
+                accessibility.captureScreenshotPng()
+            },
+        )
         val executor = WorkflowExecutor(
             store = store,
             ttsGateway = ttsGateway,
             ensureAccessibility = { AccessibilityController.ensureEnabled(this) },
             launchMainApp = ::launchMainPackage,
         )
-        server = AgentHttpServer(this, store, executor, ttsGateway, runtimeCapabilityGateway, screenOcrGateway).also { it.start() }
+        server = AgentHttpServer(
+            this,
+            store,
+            executor,
+            ttsGateway,
+            runtimeCapabilityGateway,
+            screenOcrGateway,
+            screenCaptureGateway::captureScreen,
+        ).also { it.start() }
         callbackClient = startCallbackClient(store)
     }
 

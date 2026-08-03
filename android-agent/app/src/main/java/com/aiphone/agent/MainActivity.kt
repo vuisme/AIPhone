@@ -2,6 +2,7 @@ package com.aiphone.agent
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -79,6 +80,8 @@ class MainActivity : Activity() {
     private var callbackConfigContainer: LinearLayout? = null
     private var callbackUrlInput: EditText? = null
     private var callbackPairingCard: LinearLayout? = null
+    private var callbackPairingHintValue: TextView? = null
+    private var callbackPairingButton: Button? = null
     private var callbackCodeValue: TextView? = null
     private var callbackCodeCopyButton: Button? = null
     private var pairingTokenValue: TextView? = null
@@ -360,11 +363,13 @@ class MainActivity : Activity() {
 
         callbackPairingCard = card().apply {
             visibility = View.GONE
-            addView(label("MÃ PAIRING MỘT LẦN", MUTED, 9f, true).apply { letterSpacing = .13f })
-            addView(label("Chỉ dùng mã này khi thêm thiết bị vào một tài khoản Studio mới.", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) })
+            addView(label("PAIRING CLOUD", MUTED, 9f, true).apply { letterSpacing = .13f })
+            callbackPairingHintValue = label("Đang kiểm tra trạng thái pairing...", MUTED, 11f, false).apply { setPadding(0, dp(7), 0, 0) }
+            addView(callbackPairingHintValue)
             callbackCodeValue = secretValue()
             addView(callbackCodeValue)
-            addView(actionButton("Lấy mã pairing", primary = false, action = ::revealCallbackCode))
+            callbackPairingButton = actionButton("Lấy mã pairing", primary = false, action = ::handleCallbackPairing)
+            addView(callbackPairingButton)
             callbackCodeCopyButton = actionButton("Sao chép mã", primary = false, action = ::copyCallbackCode).apply { visibility = View.GONE }
             addView(callbackCodeCopyButton)
         }
@@ -458,7 +463,10 @@ class MainActivity : Activity() {
         }
         cloudModeContainer?.visibility = if (connectionMode == ConnectionMode.CLOUD) View.VISIBLE else View.GONE
         adbModeContainer?.visibility = if (connectionMode == ConnectionMode.ADB) View.VISIBLE else View.GONE
-        callbackPairingCard?.visibility = if (connectionMode == ConnectionMode.CLOUD && callback.state == CallbackState.WAITING_PAIRING) View.VISIBLE else View.GONE
+        val pairingPresentation = CallbackPairingPresentation.from(connectionMode, callback.state, preferences.callbackPairingRequested)
+        callbackPairingCard?.visibility = if (pairingPresentation.visible) View.VISIBLE else View.GONE
+        callbackPairingHintValue?.text = pairingPresentation.description
+        callbackPairingButton?.text = pairingPresentation.buttonLabel
         val cloudCanReconnect = callback.state == CallbackState.ERROR || callback.state == CallbackState.DISABLED
         cloudReconnectButton?.visibility = if (connectionMode == ConnectionMode.CLOUD && cloudCanReconnect) View.VISIBLE else View.GONE
         callbackConfigToggle?.visibility = if (connectionMode == ConnectionMode.CLOUD) View.VISIBLE else View.GONE
@@ -556,6 +564,37 @@ class MainActivity : Activity() {
     private fun revealCallbackCode() {
         val value = preferences.callbackIdentity().pairingCode.chunked(5).joinToString("  ")
         revealSecret(callbackCodeValue, callbackCodeCopyButton, value)
+    }
+
+    private fun handleCallbackPairing() {
+        val presentation = CallbackPairingPresentation.from(
+            preferences.connectionMode,
+            CloudCallbackClient.status.state,
+            preferences.callbackPairingRequested,
+        )
+        if (presentation.action == CallbackPairingAction.REVEAL_CODE) {
+            revealCallbackCode()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Kết nối lại bằng mã pairing?")
+            .setMessage("Agent sẽ tạm ngắt phiên Cloud hiện tại và tạo mã mới. Nếu liên kết sang tài khoản khác, các quyền thiết bị đã cấp trước đó sẽ bị thu hồi.")
+            .setNegativeButton("Hủy", null)
+            .setPositiveButton("Tạo mã mới") { _, _ -> startNewCallbackPairing() }
+            .show()
+    }
+
+    private fun startNewCallbackPairing() {
+        hideSecrets()
+        preferences.requestCallbackPairing()
+        preferences.connectionMode = ConnectionMode.CLOUD
+        if (!AutomationService.isRunning && !startAgentService()) return
+        if (!restartCallback()) return
+        showConnectionNotice("Đã tạo phiên pairing mới · nhập mã trên Studio", AMBER)
+        refreshStatus()
+        refreshHandler.postDelayed({
+            if (!isFinishing && preferences.connectionMode == ConnectionMode.CLOUD) revealCallbackCode()
+        }, 300)
     }
 
     private fun revealPairingToken() {
@@ -765,6 +804,8 @@ class MainActivity : Activity() {
         callbackConfigContainer = null
         callbackUrlInput = null
         callbackPairingCard = null
+        callbackPairingHintValue = null
+        callbackPairingButton = null
         callbackCodeValue = null
         callbackCodeCopyButton = null
         pairingTokenValue = null

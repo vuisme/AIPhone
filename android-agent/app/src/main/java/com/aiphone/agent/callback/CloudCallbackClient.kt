@@ -85,6 +85,7 @@ class CloudCallbackClient(
                 .put("deviceId", identity.deviceId)
                 .put("deviceSecret", identity.deviceSecret)
                 .put("pairingCodeHash", identity.pairingCodeHash())
+                .put("pairingRequested", preferences.callbackPairingRequested)
                 .put("metadata", JSONObject()
                     .put("model", Build.MODEL)
                     .put("androidVersion", Build.VERSION.RELEASE)
@@ -101,6 +102,7 @@ class CloudCallbackClient(
                         publish(CallbackState.WAITING_PAIRING, "Đang chờ xác thực trên Studio", accountName = null)
                     }
                     "READY", "PAIRED" -> {
+                        preferences.completeCallbackPairing()
                         val accountName = message.optString("accountName").ifBlank { preferences.callbackAccountName }.ifBlank { null }
                         if (accountName != null) preferences.callbackAccountName = accountName
                         publish(CallbackState.ONLINE, "Đã kết nối Studio", message.optString("serial").ifBlank { null }, accountName)

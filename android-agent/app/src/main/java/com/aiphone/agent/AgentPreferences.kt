@@ -40,6 +40,9 @@ class AgentPreferences(context: Context) {
         get() = values.getString("callbackAccountName", "").orEmpty()
         set(value) { values.edit().putString("callbackAccountName", value.trim()).apply() }
 
+    val callbackPairingRequested: Boolean
+        get() = values.getBoolean("callbackPairingRequested", false)
+
     fun callbackIdentity(): CallbackIdentity {
         val deviceId = values.getString("callbackDeviceId", null)
         val secret = values.getString("callbackDeviceSecret", null)
@@ -51,6 +54,18 @@ class AgentPreferences(context: Context) {
     fun rotateCallbackPairingCode(): CallbackIdentity {
         val current = callbackIdentity()
         return current.copy(pairingCode = CallbackIdentity.newPairingCode()).also(::saveCallbackIdentity)
+    }
+
+    fun requestCallbackPairing(): CallbackIdentity {
+        val identity = rotateCallbackPairingCode()
+        values.edit()
+            .putBoolean("callbackPairingRequested", true)
+            .apply()
+        return identity
+    }
+
+    fun completeCallbackPairing() {
+        values.edit().putBoolean("callbackPairingRequested", false).apply()
     }
 
     private fun saveCallbackIdentity(identity: CallbackIdentity) {

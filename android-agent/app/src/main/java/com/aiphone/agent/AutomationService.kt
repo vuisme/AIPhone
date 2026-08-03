@@ -38,7 +38,6 @@ class AutomationService : Service() {
         val store = AgentStore(this)
         val ttsGateway = AndroidTtsGateway(this)
         val runtimeCapabilityGateway = AndroidRuntimeCapabilityGateway(this, ttsGateway)
-        val screenOcrGateway = AndroidMlKitScreenOcrGateway()
         val screenCaptureGateway = ScreenCaptureGateway(
             rootCapture = {
                 check(RootGateway.isRootGranted()) { "Root access is unavailable" }
@@ -53,9 +52,11 @@ class AutomationService : Service() {
                 accessibility.captureScreenshotPng()
             },
         )
+        val screenOcrGateway = AndroidMlKitScreenOcrGateway(screenCaptureGateway::captureScreen)
         val executor = WorkflowExecutor(
             store = store,
             ttsGateway = ttsGateway,
+            screenCapture = screenCaptureGateway::captureScreen,
             ensureAccessibility = { AccessibilityController.ensureEnabled(this) },
             launchMainApp = ::launchMainPackage,
         )

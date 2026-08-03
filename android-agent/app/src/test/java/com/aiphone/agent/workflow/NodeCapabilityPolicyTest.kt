@@ -11,9 +11,20 @@ class NodeCapabilityPolicyTest {
     }
 
     @Test
-    fun `clone-user launch and image matching require root`() {
+    fun `clone-user launch remains root only`() {
         assertEquals(NodeRequirement.ROOT, NodeCapabilityPolicy.requirement("LAUNCH_APP", 999))
-        assertEquals(NodeRequirement.ROOT, NodeCapabilityPolicy.requirement("TAP_IMAGE", 0))
+        assertEquals(NodeRequirement.ROOT, NodeCapabilityPolicy.requirement("CREATE_CLONE", 999))
+        assertEquals(NodeRequirement.ROOT, NodeCapabilityPolicy.requirement("DELETE_CLONE", 999))
+        assertEquals(NodeRequirement.ROOT, NodeCapabilityPolicy.requirement("CLEAR_CLONE", 999))
+        assertEquals(NodeRequirement.ROOT, NodeCapabilityPolicy.requirement("FORCE_STOP_APP", 0))
+    }
+
+    @Test
+    fun `image matching and capture can use accessibility without root`() {
+        listOf("WAIT_IMAGE", "IF_IMAGE", "TAP_IMAGE", "CAPTURE").forEach { nodeType ->
+            assertEquals(NodeRequirement.ACCESSIBILITY_OR_ROOT, NodeCapabilityPolicy.requirement(nodeType, 0))
+            assertNull(NodeCapabilityPolicy.validate(nodeType, 0, hasRoot = false, hasAccessibility = true))
+        }
     }
 
     @Test

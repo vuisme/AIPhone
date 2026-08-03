@@ -1,24 +1,9 @@
-export type NodeType =
-  | 'START'
-  | 'DELAY'
-  | 'SET_VARIABLE'
-  | 'IF'
-  | 'LOG'
-  | 'TTS_SPEAK'
-  | 'WAIT_IMAGE'
-  | 'IF_IMAGE'
-  | 'TAP_IMAGE'
-  | 'TAP_TEXT'
-  | 'TAP_POINT'
-  | 'SWIPE'
-  | 'LAUNCH_APP'
-  | 'FORCE_STOP_APP'
-  | 'CREATE_CLONE'
-  | 'DELETE_CLONE'
-  | 'CLEAR_CLONE'
-  | 'LOOP'
-  | 'SUCCESS'
-  | 'FAILURE'
+export const WORKFLOW_NODE_TYPES = [
+  'START', 'DELAY', 'SET_VARIABLE', 'IF', 'LOG', 'TTS_SPEAK', 'WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE', 'TAP_TEXT',
+  'TAP_POINT', 'SWIPE', 'LAUNCH_APP', 'FORCE_STOP_APP', 'CREATE_CLONE', 'DELETE_CLONE', 'CLEAR_CLONE', 'LOOP', 'SUCCESS', 'FAILURE',
+] as const
+
+export type NodeType = typeof WORKFLOW_NODE_TYPES[number]
 
 const VARIABLE_REFERENCE_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*$/
 
@@ -129,10 +114,7 @@ export interface ValidationResult {
 }
 
 const IMAGE_NODE_TYPES = new Set<NodeType>(['WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE'])
-const NODE_TYPES = new Set<NodeType>([
-  'START', 'DELAY', 'SET_VARIABLE', 'IF', 'LOG', 'WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE', 'TAP_TEXT', 'TAP_POINT', 'SWIPE',
-  'TTS_SPEAK', 'LAUNCH_APP', 'FORCE_STOP_APP', 'CREATE_CLONE', 'DELETE_CLONE', 'CLEAR_CLONE', 'LOOP', 'SUCCESS', 'FAILURE',
-])
+const NODE_TYPES = new Set<NodeType>(WORKFLOW_NODE_TYPES)
 const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/
 const VARIABLE_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
 const VALUE_TYPES = new Set<WorkflowValueType>(['STRING', 'NUMBER', 'BOOLEAN', 'JSON'])

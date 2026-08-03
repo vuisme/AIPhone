@@ -466,7 +466,7 @@ class MainActivity : Activity() {
         refreshConnectionModeButtons(connectionMode)
 
         val rooted = RootGateway.isRootGranted()
-        val rootText = if (rooted) "ĐÃ CẤP · image + XSpace + silent update" else "KHÔNG ROOT · chế độ Accessibility giới hạn"
+        val rootText = if (rooted) "ĐÃ CẤP · XSpace + shell + silent update" else "KHÔNG ROOT · image + input qua Accessibility"
         dashboardRootValue?.apply { text = "ROOT / KERNELSU\n$rootText"; setTextColor(if (rooted) ACID else AMBER) }
         settingsRootValue?.apply { text = "ROOT / KERNELSU\n$rootText"; setTextColor(if (rooted) ACID else AMBER) }
         val accessibilityEnabled = AccessibilityController.isEnabled(this)

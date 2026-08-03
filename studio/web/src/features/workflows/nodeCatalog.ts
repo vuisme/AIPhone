@@ -2,11 +2,14 @@ import {
   CheckCircle2,
   Clock3,
   CopyPlus,
+  Crosshair,
   GitBranch,
   ScanSearch,
   MousePointer2,
+  MoveDiagonal2,
   AudioLines,
   Play,
+  Power,
   RefreshCcw,
   RotateCcw,
   Smartphone,
@@ -30,7 +33,9 @@ export interface NodeDefinition {
   outcomes?: Array<{ id: string; label: string }>
 }
 
-export type NodeCategory = 'Luồng' | 'Dữ liệu' | 'Hình ảnh' | 'Âm thanh' | 'Ứng dụng'
+export type NodeCategory = 'Luồng' | 'Dữ liệu' | 'Hình ảnh' | 'Tương tác' | 'Âm thanh' | 'Ứng dụng'
+
+export type NodeRequirement = 'NONE' | 'ACCESSIBILITY' | 'ACCESSIBILITY_OR_ROOT' | 'ROOT'
 
 interface NodeFieldBase {
   key: string
@@ -105,11 +110,31 @@ export const NODE_CATALOG: NodeDefinition[] = [
   { type: 'WAIT_IMAGE', label: 'Chờ Asset ảnh', description: 'Đợi ảnh mục tiêu xuất hiện', category: 'Hình ảnh', accent: '#73d7ff', icon: ScanSearch, defaultConfig: { assetId: '', threshold: 0.88, timeoutMs: 30000, pollIntervalMs: 500 }, fields: [imageAssetField, thresholdField, ...timeoutFields], outcomes: [{ id: 'FOUND', label: 'Thấy' }, { id: 'TIMEOUT', label: 'Hết giờ' }] },
   { type: 'IF_IMAGE', label: 'Nếu thấy Asset', description: 'Rẽ nhánh Có / Không', category: 'Hình ảnh', accent: '#73d7ff', icon: ScanSearch, defaultConfig: { assetId: '', threshold: 0.88 }, fields: [imageAssetField, thresholdField], outcomes: [{ id: 'FOUND', label: 'Có' }, { id: 'TIMEOUT', label: 'Không' }] },
   { type: 'TAP_IMAGE', label: 'Bấm Asset ảnh', description: 'Tìm, bấm và xác nhận ảnh biến mất', category: 'Hình ảnh', accent: '#73d7ff', icon: MousePointer2, defaultConfig: { assetId: '', threshold: 0.88, offsetX: 0, offsetY: 0, verifyTap: true, tapAttempts: 2, tapVerificationDelayMs: 700 }, fields: [imageAssetField, thresholdField, { key: 'verifyTap', label: 'Xác nhận ảnh biến mất sau khi bấm', kind: 'checkbox' }, { key: 'offsetX', label: 'Lệch tâm X (px)', kind: 'number' }, { key: 'offsetY', label: 'Lệch tâm Y (px)', kind: 'number' }, { key: 'tapAttempts', label: 'Số lần thử bấm', kind: 'number', min: 1, max: 5 }, { key: 'tapVerificationDelayMs', label: 'Chờ xác nhận (ms)', kind: 'number', min: 100, max: 5000 }] },
-  { type: 'TAP_TEXT', label: 'Bấm theo text', description: 'Bấm node Android / WebView', category: 'Hình ảnh', accent: '#dff76a', icon: MousePointer2, defaultConfig: { assetId: '', timeoutMs: 10000, pollIntervalMs: 400 }, fields: [{ key: 'assetId', label: 'Asset', kind: 'asset', assetType: 'UI_SELECTOR' }, ...timeoutFields] },
+  { type: 'TAP_TEXT', label: 'Bấm theo text', description: 'Bấm node Android / WebView', category: 'Tương tác', accent: '#dff76a', icon: MousePointer2, defaultConfig: { assetId: '', timeoutMs: 10000, pollIntervalMs: 400 }, fields: [{ key: 'assetId', label: 'Asset', kind: 'asset', assetType: 'UI_SELECTOR' }, ...timeoutFields] },
+  { type: 'TAP_POINT', label: 'Bấm tọa độ', description: 'Tap tại vị trí X / Y', category: 'Tương tác', accent: '#dff76a', icon: Crosshair, defaultConfig: { x: 0, y: 0 }, fields: [{ key: 'x', label: 'Tọa độ X', kind: 'number', min: 0 }, { key: 'y', label: 'Tọa độ Y', kind: 'number', min: 0 }] },
+  { type: 'SWIPE', label: 'Vuốt màn hình', description: 'Swipe giữa hai tọa độ', category: 'Tương tác', accent: '#dff76a', icon: MoveDiagonal2, defaultConfig: { x1: 0, y1: 0, x2: 0, y2: 0, durationMs: 400 }, fields: [{ key: 'x1', label: 'Điểm đầu X', kind: 'number', min: 0 }, { key: 'y1', label: 'Điểm đầu Y', kind: 'number', min: 0 }, { key: 'x2', label: 'Điểm cuối X', kind: 'number', min: 0 }, { key: 'y2', label: 'Điểm cuối Y', kind: 'number', min: 0 }, { key: 'durationMs', label: 'Thời gian vuốt (ms)', kind: 'number', min: 1, max: 60000 }] },
   { type: 'CREATE_CLONE', label: 'Tạo app kép', description: 'Cài package vào XSpace', category: 'Ứng dụng', accent: '#ffb35c', icon: CopyPlus, defaultConfig: { packageName: 'com.garena.game.kgvn', userId: 999 }, fields: appFields },
   { type: 'LAUNCH_APP', label: 'Mở ứng dụng', description: 'Khởi chạy package', category: 'Ứng dụng', accent: '#ffb35c', icon: Smartphone, defaultConfig: { packageName: 'com.garena.game.kgvn', userId: 999 }, fields: appFields },
+  { type: 'FORCE_STOP_APP', label: 'Buộc dừng ứng dụng', description: 'Force-stop package theo Android user', category: 'Ứng dụng', accent: '#ff9b86', icon: Power, defaultConfig: { packageName: 'com.garena.game.kgvn', userId: 0 }, fields: appFields },
   { type: 'CLEAR_CLONE', label: 'Xóa dữ liệu kép', description: 'Reset dữ liệu XSpace', category: 'Ứng dụng', accent: '#ffb35c', icon: RotateCcw, defaultConfig: { packageName: 'com.garena.game.kgvn', userId: 999 }, fields: appFields },
   { type: 'DELETE_CLONE', label: 'Xóa app kép', description: 'Gỡ package khỏi XSpace', category: 'Ứng dụng', accent: '#ff9b86', icon: Trash2, defaultConfig: { packageName: 'com.garena.game.kgvn', userId: 999 }, fields: appFields },
 ]
 
 export const nodeDefinition = (type: NodeType) => NODE_CATALOG.find((item) => item.type === type) ?? NODE_CATALOG[0]
+
+export function nodeRequirement(type: NodeType, config: Record<string, unknown>): NodeRequirement {
+  if (['WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE', 'TAP_POINT', 'SWIPE'].includes(type)) return 'ACCESSIBILITY_OR_ROOT'
+  if (type === 'TAP_TEXT') return 'ACCESSIBILITY'
+  if (['CREATE_CLONE', 'DELETE_CLONE', 'CLEAR_CLONE', 'FORCE_STOP_APP'].includes(type)) return 'ROOT'
+  if (type === 'LAUNCH_APP') return Number(config.userId ?? 999) === 0 ? 'NONE' : 'ROOT'
+  return 'NONE'
+}
+
+export function nodeRequirementLabel(type: NodeType, config: Record<string, unknown>): string {
+  return {
+    NONE: 'KHÔNG YÊU CẦU ROOT',
+    ACCESSIBILITY: 'TRỢ NĂNG',
+    ACCESSIBILITY_OR_ROOT: 'ROOT / TRỢ NĂNG',
+    ROOT: 'ROOT',
+  }[nodeRequirement(type, config)]
+}

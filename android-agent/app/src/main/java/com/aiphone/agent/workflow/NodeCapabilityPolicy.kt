@@ -5,9 +5,9 @@ enum class NodeRequirement { NONE, ACCESSIBILITY, ACCESSIBILITY_OR_ROOT, ROOT }
 object NodeCapabilityPolicy {
     fun requirement(nodeType: String, androidUserId: Int = 0): NodeRequirement = when (nodeType) {
         "WAIT_IMAGE", "IF_IMAGE", "TAP_IMAGE", "CAPTURE",
+        "TAP_POINT", "SWIPE" -> NodeRequirement.ACCESSIBILITY_OR_ROOT
         "CREATE_CLONE", "DELETE_CLONE", "CLEAR_CLONE", "FORCE_STOP_APP" -> NodeRequirement.ROOT
         "TAP_TEXT" -> NodeRequirement.ACCESSIBILITY
-        "TAP_POINT", "SWIPE" -> NodeRequirement.ACCESSIBILITY_OR_ROOT
         "LAUNCH_APP" -> if (androidUserId == 0) NodeRequirement.NONE else NodeRequirement.ROOT
         else -> NodeRequirement.NONE
     }

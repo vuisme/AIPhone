@@ -31,6 +31,7 @@ const API_PATHS = [
   /^\/api\/capabilities\/tts$/,
   /^\/api\/capabilities\/runtime$/,
   /^\/api\/screenshots$/,
+  /^\/api\/vision\/ocr-screen$/,
   /^\/api\/input\/tap$/,
   /^\/api\/ui-hierarchy$/,
   /^\/api\/workflows$/,

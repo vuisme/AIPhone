@@ -137,7 +137,9 @@ export interface DeviceHealth {
     workflowStorage: boolean
     mainUserLaunch: boolean
     accessibilityInput: boolean
+    screenCapture?: boolean
     imageMatching: boolean
+    screenOcr?: boolean
     xspace: boolean
     tts?: boolean
     silentUpdate: boolean

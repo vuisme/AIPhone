@@ -2,7 +2,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Eye, EyeOff, GitBranch, Play, Trash2 } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import type { NodeType } from '../../contracts/workflow'
-import { nodeDefinition } from './nodeCatalog'
+import { nodeDefinition, nodeRequirement, nodeRequirementLabel } from './nodeCatalog'
 
 export interface WorkflowNodeData extends Record<string, unknown> {
   nodeType: NodeType
@@ -39,6 +39,7 @@ export function WorkflowNodeCard({ id, data, selected }: NodeProps) {
       <div className="flow-node__copy">
         <strong>{definition.label}</strong>
         <span>{definition.description}</span>
+        <em className="capability-badge" data-requirement={nodeRequirement(nodeData.nodeType, nodeData.config)}>{nodeRequirementLabel(nodeData.nodeType, nodeData.config)}</em>
       </div>
       {isBranch && <GitBranch className="flow-node__branch" size={15} />}
       {!isTerminal && !isBranch && <Handle type="source" position={Position.Right} />}

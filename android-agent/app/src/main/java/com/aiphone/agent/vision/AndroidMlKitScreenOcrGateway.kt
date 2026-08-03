@@ -3,7 +3,6 @@ package com.aiphone.agent.vision
 import android.graphics.BitmapFactory
 import android.graphics.Rect
 import android.os.SystemClock
-import com.aiphone.agent.root.RootGateway
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -12,9 +11,11 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-class AndroidMlKitScreenOcrGateway : ScreenOcrGateway {
+class AndroidMlKitScreenOcrGateway(
+    private val screenCapture: () -> ByteArray,
+) : ScreenOcrGateway {
     override fun recognizeScreen(): ScreenOcrResult {
-        val screenshotBytes = RootGateway.captureScreen()
+        val screenshotBytes = screenCapture()
         val bitmap = BitmapFactory.decodeByteArray(screenshotBytes, 0, screenshotBytes.size)
             ?: error("Cannot decode the captured screen for OCR")
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)

@@ -64,6 +64,7 @@ data class RunLogEntry(
 class WorkflowExecutor(
     private val store: AgentStore,
     private val ttsGateway: TtsGateway? = null,
+    private val screenCapture: () -> ByteArray,
     private val ensureAccessibility: () -> Boolean = { AIPhoneAccessibilityService.instance != null },
     private val launchMainApp: (String) -> com.aiphone.agent.root.CommandResult = { com.aiphone.agent.root.CommandResult(-1, "Main-user launch is unavailable".toByteArray()) },
 ) {
@@ -261,7 +262,7 @@ class WorkflowExecutor(
             "LAUNCH_APP" -> launchApp(config, context)
             "CAPTURE" -> {
                 val output = File(store.runDirectory, "$runId-${node.getString("id")}.png")
-                output.writeBytes(RootGateway.captureScreen())
+                output.writeBytes(screenCapture())
                 NodeResult(metadata = mapOf("fileName" to output.name))
             }
             "LOOP" -> NodeResult()
@@ -346,7 +347,6 @@ class WorkflowExecutor(
     }
 
     private fun findImage(config: JSONObject, workflowId: String): Match? {
-        check(RootGateway.isRootGranted()) { "Image matching requires root; MediaProjection is not configured" }
         val assetId = config.optString("assetId").ifBlank { config.optString("templateId") }
         require(assetId.isNotBlank()) { "Image Asset is required" }
         val file = store.assetFile(workflowId, assetId)
@@ -356,7 +356,7 @@ class WorkflowExecutor(
             NormalizedRegion(it.getDouble("x"), it.getDouble("y"), it.getDouble("width"), it.getDouble("height"))
         }
         return VisionEngine.find(
-            RootGateway.captureScreen(),
+            screenCapture(),
             file,
             config.optDouble("threshold", 0.88).coerceIn(0.5, 1.0),
             region,

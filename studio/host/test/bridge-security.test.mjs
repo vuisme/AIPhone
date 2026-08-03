@@ -66,6 +66,10 @@ test('agentPathFromBridgeUrl allows only fixed device API routes', () => {
     '/api/capabilities/runtime',
   )
   assert.equal(
+    agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/vision/ocr-screen', 'c421ff5b'),
+    '/api/vision/ocr-screen',
+  )
+  assert.equal(
     agentPathFromBridgeUrl('/bridge/devices/c421ff5b/api/runs/audio/87b6b073-f3a6-4e0b-9c06-794e79f7e3b8', 'c421ff5b'),
     '/api/runs/audio/87b6b073-f3a6-4e0b-9c06-794e79f7e3b8',
   )

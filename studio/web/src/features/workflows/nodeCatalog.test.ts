@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { nodeDefinition } from './nodeCatalog'
+import { WORKFLOW_NODE_TYPES } from '../../contracts/workflow'
+import { NODE_CATALOG, nodeDefinition, nodeRequirement, nodeRequirementLabel } from './nodeCatalog'
 
 describe('TAP_IMAGE defaults', () => {
   it('verifies the tap and retries before reporting success', () => {
@@ -49,5 +50,30 @@ describe('TTS Speak node', () => {
     })
     expect(definition.fields.find((field) => field.key === 'text')).toMatchObject({ supportsVariables: true })
     expect(definition.fields.find((field) => field.key === 'voice')).toMatchObject({ kind: 'ttsVoice' })
+  })
+})
+
+describe('node capability matrix', () => {
+  it('exposes every public workflow action in the Studio catalog', () => {
+    expect(NODE_CATALOG.map((item) => item.type).sort()).toEqual([...WORKFLOW_NODE_TYPES].sort())
+  })
+
+  it('classifies image actions as root or Accessibility', () => {
+    for (const type of ['WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE'] as const) {
+      expect(nodeRequirement(type, {})).toBe('ACCESSIBILITY_OR_ROOT')
+      expect(nodeRequirementLabel(type, {})).toBe('ROOT / TRỢ NĂNG')
+    }
+  })
+
+  it('keeps clone actions root-only and changes app launch by Android user', () => {
+    expect(nodeRequirement('CREATE_CLONE', { userId: 999 })).toBe('ROOT')
+    expect(nodeRequirement('FORCE_STOP_APP', { userId: 0 })).toBe('ROOT')
+    expect(nodeRequirement('LAUNCH_APP', { userId: 0 })).toBe('NONE')
+    expect(nodeRequirement('LAUNCH_APP', { userId: 999 })).toBe('ROOT')
+  })
+
+  it('requires Accessibility specifically for text matching', () => {
+    expect(nodeRequirement('TAP_TEXT', {})).toBe('ACCESSIBILITY')
+    expect(nodeRequirementLabel('TAP_TEXT', {})).toBe('TRỢ NĂNG')
   })
 })

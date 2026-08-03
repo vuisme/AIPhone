@@ -80,7 +80,7 @@ export function LiveViewPanel({ serial, onClose }: LiveViewPanelProps) {
           {imageUrl ? <div className="live-view-screen"><img src={imageUrl} alt={`Màn hình ${serial}`} onLoad={(event) => setNativeSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onClick={(event) => void tap(event)} /><div className="live-view-crosshair"><Crosshair size={14} /> Bấm trực tiếp để tap</div></div> : <div className="live-view-empty"><Smartphone size={38} /><strong>Đang lấy màn hình USB...</strong></div>}
           {error && <div className="live-view-error">{error}</div>}
         </div>
-        <footer><span>{nativeSize.width} × {nativeSize.height}</span><span>{isPlaying ? `LIVE · ${fps} FPS` : 'FROZEN'}</span><span>{cloud ? 'Agent screenshot · có thể cần root' : 'ADB screencap · không cần root'}</span></footer>
+        <footer><span>{nativeSize.width} × {nativeSize.height}</span><span>{isPlaying ? `LIVE · ${fps} FPS` : 'FROZEN'}</span><span>{cloud ? 'Agent screenshot · Root hoặc Trợ năng' : 'ADB screencap · không cần root'}</span></footer>
       </section>
     </div>
   )

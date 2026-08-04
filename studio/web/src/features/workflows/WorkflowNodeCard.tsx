@@ -6,6 +6,7 @@ import { nodeDefinition, rootBadgeLabel } from './nodeCatalog'
 
 export interface WorkflowNodeData extends Record<string, unknown> {
   nodeType: NodeType
+  displayName?: string
   config: Record<string, unknown>
   isActive?: boolean
   disabled?: boolean
@@ -23,9 +24,10 @@ export function WorkflowNodeCard({ id, data, selected }: NodeProps) {
   const isBranch = outcomes.length > 0
   const isTerminal = nodeData.nodeType === 'SUCCESS' || nodeData.nodeType === 'FAILURE'
   const rootBadge = rootBadgeLabel(nodeData.nodeType, nodeData.config)
+  const loopId = ['LOOP', 'LOOP_BREAKPOINT'].includes(nodeData.nodeType) ? String(nodeData.config.loopId ?? '').trim() : ''
 
   return (
-    <div className={`flow-node ${selected ? 'is-selected' : ''} ${nodeData.isActive ? 'is-active' : ''} ${nodeData.disabled ? 'is-disabled' : ''} ${rootBadge ? 'has-root' : ''}`} style={{ '--node-accent': definition.accent } as CSSProperties}>
+    <div className={`flow-node ${selected ? 'is-selected' : ''} ${nodeData.isActive ? 'is-active' : ''} ${nodeData.disabled ? 'is-disabled' : ''} ${rootBadge ? 'has-root' : ''} ${loopId ? 'has-loop-id' : ''}`} style={{ '--node-accent': definition.accent } as CSSProperties}>
       {nodeData.nodeType !== 'START' && <Handle type="target" position={Position.Left} />}
       <div className="flow-node__actions nodrag nopan" onPointerDown={(event) => event.stopPropagation()}>
         <button title="Play node" aria-label="Play node" disabled={nodeData.isNodeTestRunning} onClick={(event) => { event.stopPropagation(); nodeData.onPlay?.(id) }}><Play size={12} fill="currentColor" /></button>
@@ -38,9 +40,10 @@ export function WorkflowNodeCard({ id, data, selected }: NodeProps) {
       </div>
       <div className="flow-node__icon"><Icon size={18} /></div>
       <div className="flow-node__copy">
-        <strong>{definition.label}</strong>
+        <strong>{nodeData.displayName?.trim() || definition.label}</strong>
         <span>{definition.description}</span>
       </div>
+      {loopId && <code className="flow-node__loop-id">{loopId}</code>}
       {rootBadge && <span className="flow-node__root-badge" title="Yêu cầu quyền root">{rootBadge}</span>}
       {isBranch && <GitBranch className="flow-node__branch" size={15} />}
       {!isTerminal && !isBranch && <Handle type="source" position={Position.Right} />}

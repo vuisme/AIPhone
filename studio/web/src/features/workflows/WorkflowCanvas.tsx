@@ -45,7 +45,7 @@ function toFlowNode(node: WorkflowNode, activeNodeId?: string): Node<WorkflowNod
     id: node.id,
     type: 'workflow',
     position: node.position,
-    data: { nodeType: node.type, config: node.config, disabled: node.disabled, isActive: node.id === activeNodeId },
+    data: { nodeType: node.type, displayName: node.displayName, config: node.config, disabled: node.disabled, isActive: node.id === activeNodeId },
   }
 }
 
@@ -53,6 +53,7 @@ function toWorkflowNode(node: Node<WorkflowNodeData>): WorkflowNode {
   return {
     id: node.id,
     type: node.data.nodeType,
+    displayName: node.data.displayName?.trim() || undefined,
     position: node.position,
     config: node.data.config,
     disabled: node.data.disabled,
@@ -71,6 +72,11 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, o
   const selectedNode = nodes.find((node) => node.id === selectedNodeId)
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId)
   const selectedDefinition = selectedNode ? nodeDefinition(selectedNode.data.nodeType) : undefined
+  const loopIds = useMemo(() => Array.from(new Set(nodes
+    .filter((node) => node.data.nodeType === 'LOOP')
+    .map((node) => String(node.data.config.loopId ?? '').trim())
+    .filter((loopId) => loopId && !loopId.includes('{{')))),
+  [nodes])
 
   useEffect(() => {
     if (workflow === lastPublishedWorkflow.current) return
@@ -125,11 +131,17 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, o
   const addNode = (type: NodeType, position = { x: 260, y: 180 }) => {
     const definition = nodeDefinition(type)
     if (type === 'START' && nodes.some((node) => node.data.nodeType === 'START')) return
+    const suffix = crypto.randomUUID().slice(0, 8)
+    const config = {
+      ...definition.defaultConfig,
+      ...(type === 'LOOP' ? { loopId: `loop-${suffix}` } : {}),
+      ...(type === 'LOOP_BREAKPOINT' ? { loopId: loopIds[0] ?? '' } : {}),
+    }
     const node: Node<WorkflowNodeData> = {
-      id: `${type.toLowerCase()}-${crypto.randomUUID().slice(0, 8)}`,
+      id: `${type.toLowerCase()}-${suffix}`,
       type: 'workflow',
       position,
-      data: { nodeType: type, config: { ...definition.defaultConfig } },
+      data: { nodeType: type, config },
     }
     publish([...nodes, node], edges)
     setSelectedNodeId(node.id)
@@ -148,6 +160,10 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, o
       node.id === selectedNodeId ? { ...node, data: { ...node.data, config: { ...node.data.config, [key]: value } } } : node,
     )
     publish(nextNodes, edges)
+  }
+
+  const updateDisplayName = (displayName: string) => {
+    publish(nodes.map((node) => node.id === selectedNodeId ? { ...node, data: { ...node.data, displayName } } : node), edges)
   }
 
   const deleteNode = (nodeId: string) => {
@@ -294,10 +310,11 @@ export function WorkflowCanvas({ workflow, activeNodeId, onChange, onPlayNode, o
         ) : (
           <div className="inspector-form">
             <div className="inspector-title" style={{ borderColor: selectedDefinition.accent }}>
-              <strong>{selectedDefinition.label}</strong>
+              <strong>{selectedNode.data.displayName?.trim() || selectedDefinition.label}</strong>
               <code>{selectedNode.id}</code>
             </div>
-            <NodeInspectorFields definition={selectedDefinition} nodeType={selectedNode.data.nodeType} config={selectedNode.data.config} assets={workflow.assets} variables={variables} ttsCapabilities={ttsCapabilities} ttsCapabilitiesLoading={ttsCapabilitiesLoading} ttsCapabilitiesError={ttsCapabilitiesError} onRefreshTtsCapabilities={onRefreshTtsCapabilities} onPickCoordinates={() => onPickCoordinates(toWorkflowNode(selectedNode))} onChange={updateConfig} />
+            <label>Tên hiển thị<input aria-label="Tên hiển thị node" value={selectedNode.data.displayName ?? ''} maxLength={80} placeholder={selectedDefinition.label} onChange={(event) => updateDisplayName(event.target.value)} /></label>
+            <NodeInspectorFields definition={selectedDefinition} nodeType={selectedNode.data.nodeType} config={selectedNode.data.config} assets={workflow.assets} variables={variables} loopIds={loopIds} ttsCapabilities={ttsCapabilities} ttsCapabilitiesLoading={ttsCapabilitiesLoading} ttsCapabilitiesError={ttsCapabilitiesError} onRefreshTtsCapabilities={onRefreshTtsCapabilities} onPickCoordinates={() => onPickCoordinates(toWorkflowNode(selectedNode))} onChange={updateConfig} />
           </div>
         )}
       </aside>

@@ -119,3 +119,22 @@ describe('n8n-style expressions', () => {
     expect(onChange).toHaveBeenCalledWith('durationMs', '{{ minDelay * 2 }}')
   })
 })
+
+describe('loop breakpoint inspector', () => {
+  it('selects a loop by its declared loop ID', () => {
+    const definition = nodeDefinition('LOOP_BREAKPOINT')
+    const onChange = vi.fn()
+    render(<NodeInspectorFields
+      definition={definition}
+      nodeType="LOOP_BREAKPOINT"
+      config={{ ...definition.defaultConfig, loopId: '' }}
+      assets={[]}
+      variables={['done']}
+      loopIds={['reroll', 'dailyReward']}
+      onChange={onChange}
+    />)
+
+    fireEvent.change(screen.getByLabelText('Loop ID'), { target: { value: 'reroll' } })
+    expect(onChange).toHaveBeenCalledWith('loopId', 'reroll')
+  })
+})

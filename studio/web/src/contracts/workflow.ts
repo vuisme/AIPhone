@@ -1,6 +1,6 @@
 export const WORKFLOW_NODE_TYPES = [
   'START', 'DELAY', 'SET_VARIABLE', 'IF', 'LOG', 'TTS_SPEAK', 'WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE', 'TAP_TEXT',
-  'TAP_POINT', 'SWIPE', 'LAUNCH_APP', 'FORCE_STOP_APP', 'CREATE_CLONE', 'DELETE_CLONE', 'CLEAR_CLONE', 'LOOP', 'SUCCESS', 'FAILURE',
+  'TAP_POINT', 'SWIPE', 'LAUNCH_APP', 'FORCE_STOP_APP', 'CREATE_CLONE', 'DELETE_CLONE', 'CLEAR_CLONE', 'LOOP', 'LOOP_BREAKPOINT', 'SUCCESS', 'FAILURE',
 ] as const
 
 export type NodeType = typeof WORKFLOW_NODE_TYPES[number]
@@ -22,6 +22,7 @@ export interface Region {
 export interface WorkflowNode {
   id: string
   type: NodeType
+  displayName?: string
   position: Position
   config: Record<string, unknown>
   disabled?: boolean
@@ -117,6 +118,7 @@ const IMAGE_NODE_TYPES = new Set<NodeType>(['WAIT_IMAGE', 'IF_IMAGE', 'TAP_IMAGE
 const NODE_TYPES = new Set<NodeType>(WORKFLOW_NODE_TYPES)
 const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/
 const VARIABLE_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
+const LOOP_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/
 const VALUE_TYPES = new Set<WorkflowValueType>(['STRING', 'NUMBER', 'BOOLEAN', 'JSON'])
 
 function isExpressionTemplate(value: unknown): value is string {
@@ -223,11 +225,14 @@ export function normalizeWorkflow(value: unknown): WorkflowDocument {
     const node = asRecord(value)
     const config = { ...asRecord(node.config) }
     const position = asRecord(node.position)
+    const nodeId = String(node.id ?? '')
     if (typeof config.assetId !== 'string' && typeof config.templateId === 'string') config.assetId = config.templateId
+    if (String(node.type ?? '') === 'LOOP' && (typeof config.loopId !== 'string' || !config.loopId.trim())) config.loopId = `loop-${nodeId.slice(0, 58)}`
     delete config.templateId
     return {
-      id: String(node.id ?? ''),
+      id: nodeId,
       type: String(node.type ?? 'DELAY') as NodeType,
+      displayName: typeof node.displayName === 'string' && node.displayName.trim() ? node.displayName.trim() : undefined,
       position: { x: asNumber(position.x), y: asNumber(position.y) },
       config,
       disabled: node.disabled === true || undefined,
@@ -290,6 +295,8 @@ export function validateWorkflow(workflow: WorkflowDocument): ValidationResult {
   const issues: string[] = []
   const nodeIds = new Set<string>()
   const assetsById = new Map(workflow.assets.map((asset) => [asset.id, asset]))
+  const loopIds = new Set<string>()
+  let hasDynamicLoopId = false
 
   if (!ID_PATTERN.test(workflow.id)) issues.push('Workflow ID is invalid')
   if (workflow.nodes.filter((node) => node.type === 'START').length !== 1) {
@@ -301,6 +308,21 @@ export function validateWorkflow(workflow: WorkflowDocument): ValidationResult {
     if (!VARIABLE_PATTERN.test(parameter.name)) issues.push(`Invalid workflow parameter ${parameter.name}`)
     if (parameterNames.has(parameter.name)) issues.push(`Duplicate workflow parameter ${parameter.name}`)
     parameterNames.add(parameter.name)
+  }
+
+  for (const node of workflow.nodes.filter((candidate) => candidate.type === 'LOOP')) {
+    const loopId = String(node.config.loopId ?? '')
+    if (isExpressionTemplate(loopId)) {
+      hasDynamicLoopId = true
+      continue
+    }
+    if (!LOOP_ID_PATTERN.test(loopId)) {
+      issues.push(`Loop node ${node.id} has invalid loop ID ${loopId}`)
+    } else if (loopIds.has(loopId)) {
+      issues.push(`Duplicate loop ID ${loopId}`)
+    } else {
+      loopIds.add(loopId)
+    }
   }
 
   const assetIds = new Set<string>()
@@ -317,6 +339,7 @@ export function validateWorkflow(workflow: WorkflowDocument): ValidationResult {
     if (nodeIds.has(node.id)) issues.push(`Duplicate node id ${node.id}`)
     nodeIds.add(node.id)
     if (!NODE_TYPES.has(node.type)) issues.push(`Node ${node.id} has unsupported type ${node.type}`)
+    if (node.displayName && node.displayName.length > 80) issues.push(`Node ${node.id} display name is too long`)
     if (node.type === 'SET_VARIABLE') {
       const name = String(node.config.name ?? '')
       if (!VARIABLE_PATTERN.test(name) && !isExpressionTemplate(name)) issues.push(`Node ${node.id} has invalid variable name ${name}`)
@@ -325,9 +348,13 @@ export function validateWorkflow(workflow: WorkflowDocument): ValidationResult {
       const name = String(node.config.outputVariable ?? '')
       if (name && !VARIABLE_PATTERN.test(name) && !isExpressionTemplate(name)) issues.push(`Node ${node.id} has invalid output variable ${name}`)
     }
-    if (node.type === 'IF') {
+    if (node.type === 'IF' || node.type === 'LOOP_BREAKPOINT') {
       const name = String(node.config.leftVariable ?? '')
       if (!VARIABLE_REFERENCE_PATTERN.test(name) && !isExpressionTemplate(name)) issues.push(`Node ${node.id} has invalid left variable ${name}`)
+    }
+    if (node.type === 'LOOP_BREAKPOINT') {
+      const loopId = String(node.config.loopId ?? '')
+      if (!isExpressionTemplate(loopId) && !loopIds.has(loopId) && !hasDynamicLoopId) issues.push(`Loop breakpoint ${node.id} references missing loop ID ${loopId}`)
     }
 
     if (!node.disabled && (IMAGE_NODE_TYPES.has(node.type) || node.type === 'TAP_TEXT')) {

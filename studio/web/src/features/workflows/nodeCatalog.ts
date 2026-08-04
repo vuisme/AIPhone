@@ -54,6 +54,7 @@ export type NodeField = NodeFieldBase & (
   | { kind: 'select'; options: Array<{ value: string | number; label: string }> }
   | { kind: 'asset'; assetType: 'IMAGE' | 'UI_SELECTOR' }
   | { kind: 'androidUser' }
+  | { kind: 'loopReference' }
   | { kind: 'ttsLanguage' | 'ttsEngine' | 'ttsVoice' }
   | { kind: 'typedValue'; typeKey: string }
 )
@@ -69,11 +70,26 @@ const appFields: NodeField[] = [
   { key: 'packageName', label: 'Package', hint: 'Nhập package hoặc chọn biến {{tenBien}}', kind: 'text', supportsVariables: true, variableInsertMode: 'replace' },
   { key: 'userId', label: 'Chạy trên', kind: 'androidUser' },
 ]
+const conditionFields: NodeField[] = [
+  { key: 'leftVariable', label: 'Biến bên trái', kind: 'variable' },
+  { key: 'operator', label: 'Điều kiện', kind: 'select', options: [
+    { value: 'EQUALS', label: 'Bằng' }, { value: 'NOT_EQUALS', label: 'Khác' }, { value: 'CONTAINS', label: 'Có chứa' },
+    { value: 'STARTS_WITH', label: 'Bắt đầu bằng' }, { value: 'ENDS_WITH', label: 'Kết thúc bằng' },
+    { value: 'GREATER_THAN', label: 'Lớn hơn' }, { value: 'GREATER_OR_EQUAL', label: 'Lớn hơn hoặc bằng' },
+    { value: 'LESS_THAN', label: 'Nhỏ hơn' }, { value: 'LESS_OR_EQUAL', label: 'Nhỏ hơn hoặc bằng' },
+    { value: 'IS_EMPTY', label: 'Rỗng' }, { value: 'IS_NOT_EMPTY', label: 'Không rỗng' },
+  ] },
+  { key: 'rightSource', label: 'So sánh với', kind: 'select', options: [{ value: 'LITERAL', label: 'Giá trị nhập' }, { value: 'VARIABLE', label: 'Biến khác' }] },
+  { key: 'rightVariable', label: 'Biến bên phải', kind: 'variable', visibleWhen: { key: 'rightSource', equals: 'VARIABLE' } },
+  { key: 'rightType', label: 'Kiểu giá trị', kind: 'select', options: [{ value: 'STRING', label: 'Text' }, { value: 'NUMBER', label: 'Số' }, { value: 'BOOLEAN', label: 'Đúng / Sai' }, { value: 'JSON', label: 'JSON' }], visibleWhen: { key: 'rightSource', equals: 'LITERAL' } },
+  { key: 'rightValue', label: 'Giá trị bên phải', kind: 'typedValue', typeKey: 'rightType', visibleWhen: { key: 'rightSource', equals: 'LITERAL' } },
+]
 
 export const NODE_CATALOG: NodeDefinition[] = [
   { type: 'START', label: 'Bắt đầu', description: 'Điểm vào duy nhất', category: 'Luồng', accent: '#dcf763', icon: Play, defaultConfig: {}, fields: noFields },
   { type: 'DELAY', label: 'Chờ', description: 'Dừng theo mili giây', category: 'Luồng', accent: '#ffd38a', icon: Clock3, defaultConfig: { durationMs: 1000 }, fields: [{ key: 'durationMs', label: 'Thời gian chờ (ms)', kind: 'number', min: 0 }] },
-  { type: 'LOOP', label: 'Lặp lại', description: 'Quay về một nhánh', category: 'Luồng', accent: '#ffd38a', icon: RefreshCcw, defaultConfig: { maxIterations: 0 }, fields: [{ key: 'maxIterations', label: 'Số vòng tối đa', hint: '0 = không giới hạn', kind: 'number', min: 0 }] },
+  { type: 'LOOP', label: 'Loop', description: 'Đánh dấu điểm bắt đầu vòng lặp', category: 'Luồng', accent: '#ffd38a', icon: RefreshCcw, defaultConfig: { loopId: 'loop-1', maxIterations: 0 }, fields: [{ key: 'loopId', label: 'Loop ID', hint: 'Dùng để liên kết với Loop Breakpoint', kind: 'text' }, { key: 'maxIterations', label: 'Giới hạn an toàn', hint: '0 = không giới hạn', kind: 'number', min: 0 }] },
+  { type: 'LOOP_BREAKPOINT', label: 'Loop Breakpoint', description: 'Đạt điều kiện thì đi tiếp, chưa đạt thì lặp lại', category: 'Luồng', accent: '#ffcf70', icon: GitBranch, defaultConfig: { loopId: '', leftVariable: '', operator: 'EQUALS', rightSource: 'LITERAL', rightType: 'BOOLEAN', rightValue: true }, fields: [{ key: 'loopId', label: 'Loop ID', hint: 'Chọn Loop sẽ chạy lại khi điều kiện chưa đạt', kind: 'loopReference' }, ...conditionFields], outcomes: [{ id: 'COMPLETE', label: 'Đạt' }] },
   { type: 'SUCCESS', label: 'Thành công', description: 'Dừng và lưu kết quả', category: 'Luồng', accent: '#8ee3b4', icon: CheckCircle2, defaultConfig: { message: 'Đã hoàn tất' }, fields: [{ key: 'message', label: 'Thông báo', kind: 'text', supportsVariables: true, variableInsertMode: 'append' }] },
   { type: 'FAILURE', label: 'Thất bại', description: 'Dừng với lỗi', category: 'Luồng', accent: '#ff9b86', icon: XCircle, defaultConfig: { message: 'Workflow thất bại' }, fields: [{ key: 'message', label: 'Thông báo', kind: 'text', supportsVariables: true, variableInsertMode: 'append' }] },
   { type: 'SET_VARIABLE', label: 'Đặt biến', description: 'Lưu dữ liệu dùng trong run', category: 'Dữ liệu', accent: '#f0c96a', icon: Variable, defaultConfig: { name: 'value', valueType: 'STRING', value: '' }, fields: [
@@ -81,20 +97,7 @@ export const NODE_CATALOG: NodeDefinition[] = [
     { key: 'valueType', label: 'Kiểu dữ liệu', kind: 'select', options: [{ value: 'STRING', label: 'Text' }, { value: 'NUMBER', label: 'Số' }, { value: 'BOOLEAN', label: 'Đúng / Sai' }, { value: 'JSON', label: 'JSON' }] },
     { key: 'value', label: 'Giá trị', kind: 'typedValue', typeKey: 'valueType', supportsVariables: true, variableInsertMode: 'append' },
   ] },
-  { type: 'IF', label: 'Nếu / thì', description: 'So sánh biến và rẽ nhánh', category: 'Dữ liệu', accent: '#f0c96a', icon: GitBranch, defaultConfig: { leftVariable: '', operator: 'EQUALS', rightSource: 'LITERAL', rightType: 'STRING', rightValue: '' }, fields: [
-    { key: 'leftVariable', label: 'Biến bên trái', kind: 'variable' },
-    { key: 'operator', label: 'Điều kiện', kind: 'select', options: [
-      { value: 'EQUALS', label: 'Bằng' }, { value: 'NOT_EQUALS', label: 'Khác' }, { value: 'CONTAINS', label: 'Có chứa' },
-      { value: 'STARTS_WITH', label: 'Bắt đầu bằng' }, { value: 'ENDS_WITH', label: 'Kết thúc bằng' },
-      { value: 'GREATER_THAN', label: 'Lớn hơn' }, { value: 'GREATER_OR_EQUAL', label: 'Lớn hơn hoặc bằng' },
-      { value: 'LESS_THAN', label: 'Nhỏ hơn' }, { value: 'LESS_OR_EQUAL', label: 'Nhỏ hơn hoặc bằng' },
-      { value: 'IS_EMPTY', label: 'Rỗng' }, { value: 'IS_NOT_EMPTY', label: 'Không rỗng' },
-    ] },
-    { key: 'rightSource', label: 'So sánh với', kind: 'select', options: [{ value: 'LITERAL', label: 'Giá trị nhập' }, { value: 'VARIABLE', label: 'Biến khác' }] },
-    { key: 'rightVariable', label: 'Biến bên phải', kind: 'variable', visibleWhen: { key: 'rightSource', equals: 'VARIABLE' } },
-    { key: 'rightType', label: 'Kiểu giá trị', kind: 'select', options: [{ value: 'STRING', label: 'Text' }, { value: 'NUMBER', label: 'Số' }, { value: 'BOOLEAN', label: 'Đúng / Sai' }, { value: 'JSON', label: 'JSON' }], visibleWhen: { key: 'rightSource', equals: 'LITERAL' } },
-    { key: 'rightValue', label: 'Giá trị bên phải', kind: 'typedValue', typeKey: 'rightType', visibleWhen: { key: 'rightSource', equals: 'LITERAL' } },
-  ], outcomes: [{ id: 'TRUE', label: 'Đúng' }, { id: 'FALSE', label: 'Sai' }] },
+  { type: 'IF', label: 'Nếu / thì', description: 'So sánh biến và rẽ nhánh', category: 'Dữ liệu', accent: '#f0c96a', icon: GitBranch, defaultConfig: { leftVariable: '', operator: 'EQUALS', rightSource: 'LITERAL', rightType: 'STRING', rightValue: '' }, fields: conditionFields, outcomes: [{ id: 'TRUE', label: 'Đúng' }, { id: 'FALSE', label: 'Sai' }] },
   { type: 'LOG', label: 'Ghi log', description: 'Ghi giá trị để kiểm tra run', category: 'Dữ liệu', accent: '#f0c96a', icon: Terminal, defaultConfig: { message: 'Giá trị: {{value}}' }, fields: [{ key: 'message', label: 'Nội dung', hint: 'Có thể chèn biến bằng {{tenBien}}', kind: 'textarea', supportsVariables: true, variableInsertMode: 'append' }] },
   { type: 'TTS_SPEAK', label: 'TTS Speak', description: 'Tạo file giọng nói và phát âm thanh', category: 'Âm thanh', accent: '#58e0c2', icon: AudioLines, defaultConfig: { text: 'Xin chào từ AIPhone', engine: '', voice: '', languageTag: 'vi-VN', speechRate: 1, pitch: 1, playAudio: false, saveAudio: true, outputVariable: 'ttsResult' }, fields: [
     { key: 'text', label: 'Nội dung đọc', hint: 'Hỗ trợ text thường và {{tenBien}}', kind: 'textarea', supportsVariables: true, variableInsertMode: 'append' },

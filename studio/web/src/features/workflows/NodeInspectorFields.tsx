@@ -11,6 +11,7 @@ interface NodeInspectorFieldsProps {
   config: Record<string, unknown>
   assets: AssetRecord[]
   variables: string[]
+  loopIds?: string[]
   ttsCapabilities?: TtsCapabilities
   ttsCapabilitiesLoading?: boolean
   ttsCapabilitiesError?: string
@@ -75,6 +76,8 @@ function fieldControl(field: NodeField, props: NodeInspectorFieldsProps, id: str
       )
     case 'androidUser':
       return <select id={id} value={Number(value)} onChange={(event) => props.onChange(field.key, Number(event.target.value))}>{androidUserOptions(props.nodeType).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+    case 'loopReference':
+      return <select id={id} value={String(value ?? '')} onChange={(event) => props.onChange(field.key, event.target.value)}><option value="">Chọn Loop ID...</option>{(props.loopIds ?? []).map((loopId) => <option key={loopId} value={loopId}>{loopId}</option>)}</select>
     case 'ttsLanguage': {
       const current = String(value ?? 'vi-VN')
       const languages = Array.from(new Set((props.ttsCapabilities?.engines ?? []).flatMap((engine) => engine.voices.map((voice) => voice.languageTag)))).sort()

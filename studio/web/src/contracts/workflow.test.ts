@@ -158,4 +158,46 @@ describe('workflow validation', () => {
     expect(issues).not.toContain('Node dynamic-if has invalid left variable {{ variablePath }}')
     expect(issues.some((issue) => issue.includes('dynamic-image references missing'))).toBe(false)
   })
+
+  it('preserves an optional custom display name for each workflow node', () => {
+    const workflow = normalizeWorkflow({
+      ...createStarterWorkflow(),
+      nodes: [{ id: 'start', type: 'START', displayName: 'Khởi động quy trình', position: { x: 0, y: 0 }, config: {} }],
+    })
+
+    expect(workflow.nodes[0].displayName).toBe('Khởi động quy trình')
+  })
+
+  it('assigns a stable loop ID when loading an older loop node', () => {
+    const workflow = normalizeWorkflow({
+      ...createStarterWorkflow(),
+      nodes: [{ id: 'legacy-loop', type: 'LOOP', position: { x: 0, y: 0 }, config: { maxIterations: 10 } }],
+    })
+
+    expect(workflow.nodes[0].config.loopId).toBe('loop-legacy-loop')
+  })
+
+  it('validates unique loop IDs and breakpoint references', () => {
+    const workflow = createStarterWorkflow()
+    workflow.nodes.push(
+      { id: 'loop-a', type: 'LOOP', position: { x: 200, y: 100 }, config: { loopId: 'reroll', maxIterations: 20 } },
+      { id: 'loop-b', type: 'LOOP', position: { x: 300, y: 100 }, config: { loopId: 'reroll', maxIterations: 5 } },
+      { id: 'break-missing', type: 'LOOP_BREAKPOINT', position: { x: 400, y: 100 }, config: { loopId: 'unknown', leftVariable: 'done', operator: 'EQUALS', rightSource: 'LITERAL', rightType: 'BOOLEAN', rightValue: true } },
+    )
+
+    expect(validateWorkflow(workflow).issues).toEqual(expect.arrayContaining([
+      'Duplicate loop ID reroll',
+      'Loop breakpoint break-missing references missing loop ID unknown',
+    ]))
+  })
+
+  it('accepts a breakpoint that references an existing loop ID', () => {
+    const workflow = createStarterWorkflow()
+    workflow.nodes.push(
+      { id: 'loop-reroll', type: 'LOOP', position: { x: 200, y: 100 }, config: { loopId: 'reroll', maxIterations: 0 } },
+      { id: 'break-reroll', type: 'LOOP_BREAKPOINT', position: { x: 400, y: 100 }, config: { loopId: 'reroll', leftVariable: 'done', operator: 'EQUALS', rightSource: 'LITERAL', rightType: 'BOOLEAN', rightValue: true } },
+    )
+
+    expect(validateWorkflow(workflow).issues).toEqual([])
+  })
 })

@@ -163,6 +163,7 @@ class WorkflowExecutor(
             }
             var node = nodes.values.singleOrNull { it.getString("type") == "START" }
                 ?: error("Workflow must contain exactly one START node")
+            val loops = LoopRuntime()
             var iteration = 0
             var steps = 0
 
@@ -172,13 +173,12 @@ class WorkflowExecutor(
                 val nodeType = node.getString("type")
                 val disabled = node.optBoolean("disabled", false)
                 appendLog("INFO", "Bắt đầu node $nodeType", nodeId)
-                if (!disabled && nodeType == "LOOP") {
-                    val maximum = context.resolveConfig(node.optJSONObject("config") ?: JSONObject()).optInt("maxIterations", 0)
-                    check(maximum <= 0 || iteration < maximum) { "Loop limit of $maximum iterations reached" }
-                }
                 status.updateAndGet { it.copy(currentNodeId = nodeId, iteration = iteration) }
-                val result = (if (disabled) null else executeNode(node, runId, workflowId, context)).also {
-                    if (!disabled && nodeType == "LOOP") iteration++
+                val result = if (disabled) null else executeNode(node, runId, workflowId, context, loops)
+                if (!disabled && nodeType == "LOOP") {
+                    val loopResult = requireNotNull(result)
+                    iteration = (loopResult.metadata["iteration"] as Number).toInt()
+                    appendLog("INFO", "Bắt đầu loop ${loopResult.metadata["loopId"]}, vòng $iteration", nodeId)
                 }
                 if (disabled) appendLog("WARN", "Bỏ qua node đang disable", nodeId)
                 else appendLog("INFO", result?.description() ?: "Node hoàn tất", nodeId)
@@ -188,6 +188,19 @@ class WorkflowExecutor(
                 when (nodeType.takeUnless { disabled }) {
                     "SUCCESS" -> return finish(RunState.SUCCESS, context.interpolate(node.optJSONObject("config")?.optString("message", "Hoàn tất") ?: "Hoàn tất"))
                     "FAILURE" -> return finish(RunState.FAILED, context.interpolate(node.optJSONObject("config")?.optString("message", "Workflow thất bại") ?: "Workflow thất bại"))
+                }
+
+                if (!disabled && nodeType == "LOOP_BREAKPOINT") {
+                    val breakpointResult = requireNotNull(result)
+                    val loopId = breakpointResult.metadata["loopId"]?.toString() ?: error("Loop breakpoint did not resolve a loop ID")
+                    if (breakpointResult.outcome == "REPEAT") {
+                        val targetNodeId = loops.repeatTarget(loopId)
+                        appendLog("INFO", "Điều kiện chưa đạt, quay lại loop $loopId", nodeId)
+                        node = nodes[targetNodeId] ?: error("Loop $loopId references missing node $targetNodeId")
+                        continue
+                    }
+                    loops.complete(loopId)
+                    appendLog("INFO", "Điều kiện đã đạt, kết thúc loop $loopId", nodeId)
                 }
 
                 val nextEdge = selectNextRoute(edges, nodeId, result?.outcome, disabled)
@@ -211,7 +224,7 @@ class WorkflowExecutor(
             val node = nodes[index]
             status.updateAndGet { it.copy(currentNodeId = requestedNodeId) }
             appendLog("INFO", "Chạy thử node ${node.getString("type")}", requestedNodeId)
-            val result = executeNode(node, runId, workflowId, context)
+            val result = executeNode(node, runId, workflowId, context, LoopRuntime())
             status.updateAndGet { it.copy(variables = context.snapshot(), lastResult = result) }
             if (cancellation.get()) return finish(RunState.STOPPED, "Đã dừng chạy thử node")
             appendLog("INFO", result.description() ?: "Node chạy thành công", requestedNodeId)
@@ -226,7 +239,7 @@ class WorkflowExecutor(
         }
     }
 
-    private fun executeNode(node: JSONObject, runId: String, workflowId: String, context: RunContext): NodeResult {
+    private fun executeNode(node: JSONObject, runId: String, workflowId: String, context: RunContext, loops: LoopRuntime): NodeResult {
         val type = node.getString("type")
         val config = context.resolveConfig(node.optJSONObject("config") ?: JSONObject())
         return when (type) {
@@ -238,6 +251,7 @@ class WorkflowExecutor(
             }
             "SET_VARIABLE" -> setVariable(config, context)
             "IF" -> evaluateCondition(context, conditionSpec(config))
+            "LOOP_BREAKPOINT" -> loopBreakpoint(config, context)
             "LOG" -> {
                 val message = config.optString("message")
                 appendLog("INFO", message)
@@ -267,7 +281,11 @@ class WorkflowExecutor(
                 output.writeBytes(screenCapture())
                 NodeResult(metadata = mapOf("fileName" to output.name))
             }
-            "LOOP" -> NodeResult()
+            "LOOP" -> {
+                val loopId = config.optString("loopId").trim().ifBlank { "loop-${node.getString("id").take(58)}" }
+                val loopIteration = loops.enter(node.getString("id"), loopId, config.optInt("maxIterations", 0))
+                NodeResult(metadata = mapOf("loopId" to loopId, "iteration" to loopIteration))
+            }
             else -> error("Unsupported node type $type")
         }
     }
@@ -334,6 +352,17 @@ class WorkflowExecutor(
             ValueOperand.literal(type, config.opt("rightValue"))
         }
         return ConditionSpec(left, operator, right)
+    }
+
+    private fun loopBreakpoint(config: JSONObject, context: RunContext): NodeResult {
+        val loopId = config.getString("loopId").trim()
+        val condition = evaluateCondition(context, conditionSpec(config))
+        val complete = condition.outcome == "TRUE"
+        return NodeResult(
+            outcome = if (complete) "COMPLETE" else "REPEAT",
+            value = condition.value,
+            metadata = mapOf("loopId" to loopId, "conditionMet" to complete),
+        )
     }
 
     private fun waitForImage(config: JSONObject, workflowId: String): String {

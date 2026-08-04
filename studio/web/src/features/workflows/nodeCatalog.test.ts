@@ -32,6 +32,14 @@ describe('data and logic nodes', () => {
       { id: 'FALSE', label: 'Sai' },
     ])
   })
+
+  it('defines ID-based loop and conditional breakpoint nodes', () => {
+    expect(nodeDefinition('LOOP').fields.map((field) => field.key)).toEqual(['loopId', 'maxIterations'])
+    expect(nodeDefinition('LOOP_BREAKPOINT').fields.map((field) => field.key)).toEqual([
+      'loopId', 'leftVariable', 'operator', 'rightSource', 'rightVariable', 'rightType', 'rightValue',
+    ])
+    expect(nodeDefinition('LOOP_BREAKPOINT').outcomes).toEqual([{ id: 'COMPLETE', label: 'Đạt' }])
+  })
 })
 
 describe('TTS Speak node', () => {
